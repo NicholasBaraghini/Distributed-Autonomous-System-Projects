@@ -7,6 +7,6 @@ The project consists in two main tasks. The first concerns a data analytics appl
 You can read the task description [here](https://github.com/NicholasBaraghini/Distributed-Autonomous-System-Projects/files/9022898/Project_1.pdf)
 
 ### Team
-
-- [Federico Iadarola]() 
+- [Federico Iadarola](https://github.com/fedeiada)
+- [Federico Cristallo](https://github.com/)
 - [Nicholas Baraghini](https://github.com/NicholasBaraghini) 
