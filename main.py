@@ -1,11 +1,11 @@
+
 import numpy as np
 import matplotlib.pyplot as plt
 import networkx as nx
-
 np.random.seed(1)
 
-
-# Che sonno mannaggia cane
+#lallallala
+#viernvoern
 NN = 5 #number of agents
 
 ###############################################################################
@@ -34,6 +34,10 @@ while any(abs(np.sum(WW, axis=1)-1))> 10e-10:
 	WW = WW/(ONES@WW)
 	WW = np.abs(WW)
 
+
+#commento
 '''
 Normalizing the input data helps to speed up the training. Also, it reduces the chance of getting stuck in local optima, since we're using stochastic gradient descent to find the optimal weights for the network.
 '''
+
+
