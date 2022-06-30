@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import networkx as nx
 np.random.seed(1)
 
-
+#lallallala
 NN = 5 #number of agents
 
 ###############################################################################
