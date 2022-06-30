@@ -5,7 +5,7 @@ import networkx as nx
 np.random.seed(1)
 
 
-#lallallala
+# Che sonno mannaggia cane
 NN = 5 #number of agents
 
 ###############################################################################
