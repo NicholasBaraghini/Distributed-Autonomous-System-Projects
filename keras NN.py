@@ -5,6 +5,7 @@ from keras.layers.core import Dense, Dropout, Activation
 from keras.utils import np_utils
 import numpy as np
 import matplotlib.pyplot as plt
+
 np.random.seed(0)
 
 ''' IMPORT AND PR-PROCESSING OF DATASET'''
@@ -41,9 +42,9 @@ print("Test matrix shape", X_test.shape)
 n_classes = 10
 print("Shape before one-hot encoding: ", y_train.shape)
 Y_train_class = np_utils.to_categorical(y_train, n_classes)
-Y_train_class[Y_train_class == 0] = -1      # substitute 0 with -1
+Y_train_class[Y_train_class == 0] = -1  # substitute 0 with -1
 Y_test_class = np_utils.to_categorical(y_test, n_classes)
-Y_test_class[Y_test_class == 0] = -1         # substitute 0 with -1
+Y_test_class[Y_test_class == 0] = -1  # substitute 0 with -1
 print("Shape after one-hot encoding: ", Y_train_class.shape)
 
 # the images and labels now are in the correct format
@@ -79,17 +80,11 @@ def inference_dynamics(xt, ut, t):
       output:
                 xtp next signal
     """
-    print(f"u : {ut[1:, :].shape}, transp {ut[1:, :].T.shape}, {xt.reshape(-1, 1).shape}")
-    xtp = np.zeros((1,d[t+1]))
-    temp = xt.reshape(1, -1) @ ut[1:, :] + ut[0, :]  # save temporarily the product between signal and weights
-    print(f"temp {temp.shape}")
+    # save temporarily the product between signal and weights
+    temp = xt @ ut[1:, :] + ut[0, :]
 
-    xtp = sigmoid_fn(temp)  # x' * u_ell
+    return sigmoid_fn(temp)
 
-    # for ell in range(len(xtp)):
-    #   temp = xt @ ut[ell, 1:] + ut[ell, 0]  # including the bias
-
-    return xtp
 
 # Forward Propagation
 def forward_pass(uu, x0):
@@ -101,11 +96,12 @@ def forward_pass(uu, x0):
                 xx state trajectory: x[1],x[2],..., x[T]
     """
     xx = []
-    for index in range(len(d)):     # create the signal structure
-        xx.append(np.zeros((d[index], 1)))
+    for index in range(len(d)):  # create the signal structure
+        xx.append(np.zeros((1, d[index])))
+
     xx[0] = x0
 
-    for t in range(T-1):
+    for t in range(T - 1):
         xx[t + 1] = inference_dynamics(xx[t], uu[t], t)  # x^+ = f(x,u)
 
     return xx
@@ -124,39 +120,31 @@ def adjoint_dynamics(ltp, xt, ut, t):
                 llambda_t next costate
                 delta_ut loss gradient wrt u_t
     """
-    rows = ut.shape[0]-1    # save the dimension of input layer (without bias)
-    cols = ut.shape[1]      # save the dimension of output layer
-    AA = np.zeros(rows, cols)
-    BB = np.zeros(rows*cols, cols)
-    # df_du = np.zeros((d,(d+1)*d))
-    Delta_ut = np.zeros((d, d + 1))
-    d_sigma = np.zeros(d[t+1])
+    Delta_ut = np.ones(ut.shape)
+    d_sigma = np.zeros((1, d[t + 1]))
 
-    temp = np.matmul(ut[1:, :].T, xt) + ut[0, :].T
+    temp = xt @ ut[1:, :] + ut[0, :]
+
     for ell in range(d_sigma.shape[0]):
         d_sigma[ell] = sigmoid_fn_derivative(temp[ell])
-    # dsigma_j = sigmoid_fn_derivative(xt @ ut[j, 1:] + ut[j, 0])
-    AA = (ut.T * d_sigma).T      # sarà giusto???
 
-    for col in range(cols):
-        BB[(col*rows):((col+1)*rows),col] = xt * d_sigma[col]
-    #df_dx[:, j] = ut[j, 1:] * d_sigma_j
-    # df_du[j, XX] = dsigma_j*np.hstack([1,xt])
-    '''
-    # B'@ltp
-    Delta_ut[j, 0] = ltp[j] * dsigma_j
-    Delta_ut[j, 1:] = xt * ltp[j] * dsigma_j
+    AA = (ut[1:, :] * d_sigma)  # sarà giusto???
+    print(f'Shape ltp : {ltp.shape}')
 
-    lt = df_dx @ ltp  # '@ltp
-    # Delta_ut = df_du@ltp
-    '''
-    lt = AA * ltp
+    Delta_ut[0, :] = ltp * d_sigma
 
-    return lt, Delta_ut
+    Delta_ut[1:, :] = np.tile(xt, (d[t+1], 1)).T * (ltp * d_sigma)
+
+    print(f'Shape Delta_ut : {Delta_ut.shape}')
+    print(f'Shape AA : {AA.shape}')
+
+    lt = AA @ ltp.T
+    print(f'Shape lt : {lt.shape}')
+    return lt.T, Delta_ut
 
 
 # Backward Propagation
-def backward_pass(xx, uu, llambdaT):
+def backward_pass(xx, uu, llambdaT, ):
     """
       input:
                 xx state trajectory: x[1],x[2],..., x[T]
@@ -166,15 +154,21 @@ def backward_pass(xx, uu, llambdaT):
                 llambda costate trajectory
                 delta_u costate output, i.e., the loss gradient
     """
-    llambda = np.zeros((T, d))
+    llambda = []
+    for index in range(len(d)):  # create the signal structure
+        llambda.append(np.zeros((1, d[index])))
     llambda[-1] = llambdaT
 
-    Delta_u = np.zeros((T - 1, d, d + 1))
+    Delta_u = []
+    for index in range(len(d)):  # create the signal structure
+        Delta_u.append(np.zeros((1, d[index])))
 
-    for t in reversed(range(T - 1)):  # T-2,T-1,...,1,0
+    for t in reversed(range(T-1)):  # T-1,T-2,...,1,0
+        print(t)
         llambda[t], Delta_u[t] = adjoint_dynamics(llambda[t + 1], xx[t], uu[t], t)
 
     return Delta_u
+
 
 ###############################################################
 # GO!
@@ -183,25 +177,23 @@ J = np.zeros(max_iters)  # Cost function
 # Initial Weights / Initial Input Trajectory
 uu = []
 
-for index in range(len(d)-1):
-    uu.append(np.random.randn(d[index]+1, d[index+1]))  # bias considered
+for index in range(len(d) - 1):
+    uu.append(np.random.randn(d[index] + 1, d[index + 1]))  # bias considered
 
 for k in range(max_iters):
     if k % 2 == 0:
         # print('Cost at k={:d} is {:.4f}'.format(k, J[k - 1])) # da rimuovere
-        print(f"Cost at {k} is {np.round(J[k-1], decimals=4)}")
+        print(f"Cost at {k} is {np.round(J[k - 1], decimals=4)}")
 
     for sample in range(0, 12):
         data_point = X_train[sample].reshape(1, -1)  # x0
-        label_point = Y_train_class[sample].reshape(1,-1)
+        label_point = Y_train_class[sample].reshape(1, -1)
 
         # Initial State Trajectory
         xx = forward_pass(uu, data_point)  # forward simulation
-        a = xx[4].reshape(-1, 1)
-        print(a.shape)
         # GO!
         # Backward propagation
-        llambdaT = 2 * (xx[-1, :] - label_point)  # nabla J in last layer
+        llambdaT = 2 * (xx[-1] - label_point)  # nabla J in last layer
         Delta_u = backward_pass(xx, uu, llambdaT)  # the gradient of the loss function
 
         # Update the weights

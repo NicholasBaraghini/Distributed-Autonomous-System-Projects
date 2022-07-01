@@ -90,7 +90,7 @@ def adjoint_dynamics(ltp, xt, ut):
 
         # B'@ltp
         Delta_ut[j, 0] = ltp[j] * dsigma_j
-        Delta_ut[j, 1:] = xt * ltp[j] * dsigma_j
+        Delta_ut[j, 1:] = np.tile(xt, (1,10)) * ltp[j] * dsigma_j
 
     lt = df_dx @ ltp  # A'@ltp
     # Delta_ut = df_du@ltp
