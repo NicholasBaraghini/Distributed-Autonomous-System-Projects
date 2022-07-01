@@ -1,8 +1,3 @@
-#
-# Gradient Tracking Scalar Case
-# Ivano Notarnicola
-# Bologna, 18/05/2022
-#
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -41,7 +36,7 @@ while 1:
         break
     else:
         print("the graph is NOT connected\n")
-        quit()
+        # quit()
 
 ###############################################################################
 # Compute mixing matrices
@@ -111,6 +106,7 @@ for tt in range(MAXITERS - 1):
 
         f_ii, grad_fii = quadratic_fn(XX[ii, tt], Q[ii], R[ii])
         _, grad_fii_p = quadratic_fn(XX[ii, tt + 1], Q[ii], R[ii])
+
         SS[ii, tt + 1] = WW[ii, ii] * SS[ii, tt] + (grad_fii_p - grad_fii)
         for jj in Nii:
             SS[ii, tt + 1] += WW[ii, jj] * SS[jj, tt]

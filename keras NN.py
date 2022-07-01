@@ -3,6 +3,7 @@ from keras.models import Sequential, load_model
 from keras.layers.core import Dense, Dropout, Activation
 from keras.utils import np_utils
 
+
 (X_train, y_train), (X_test, y_test) = mnist.load_data()
 
 # shape of the numpy arrays
