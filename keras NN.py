@@ -56,8 +56,9 @@ T = 5  # Layers
 d = [784, 392, 196, 98, 10]  # Number of neurons in each layer. bias already considered
 
 # Gradient-Tracking Method Parameters
-max_iters = 10  # epochs
-stepsize = 0.1  # learning rate
+MAX_ITERS = 300  # epochs
+N_IMAGES = 100  # number of images
+stepsize = 0.025  # learning rate
 
 
 ###############################################################################
@@ -99,8 +100,10 @@ def forward_pass(uu, x0):
     for index in range(len(d)):  # create the signal structure
         xx.append(np.zeros((1, d[index])))
 
+    # Input layer
     xx[0] = x0
 
+    # compute the inference dynamics
     for t in range(T - 1):
         xx[t + 1] = inference_dynamics(xx[t], uu[t], t)  # x^+ = f(x,u)
 
@@ -120,26 +123,27 @@ def adjoint_dynamics(ltp, xt, ut, t):
                 llambda_t next costate
                 delta_ut loss gradient wrt u_t
     """
+    # Initialization
     Delta_ut = np.ones(ut.shape)
     d_sigma = np.zeros((1, d[t + 1]))
 
+    # linear composition of neurons activations with the weights + bias
     temp = xt @ ut[1:, :] + ut[0, :]
 
+    # compute the gradient of the activations
     for ell in range(d_sigma.shape[0]):
         d_sigma[ell] = sigmoid_fn_derivative(temp[ell])
 
-    AA = (ut[1:, :] * d_sigma)  # sarà giusto???
-    print(f'Shape ltp : {ltp.shape}')
+    # compute df_dx
+    AA = (ut[1:, :] * d_sigma)
 
-    Delta_ut[0, :] = ltp * d_sigma
+    # compute df_du
+    Delta_ut[0, :] = ltp * d_sigma  # bias term
+    Delta_ut[1:, :] = np.tile(xt, (d[t + 1], 1)).T * (ltp * d_sigma)
 
-    Delta_ut[1:, :] = np.tile(xt, (d[t+1], 1)).T * (ltp * d_sigma)
-
-    print(f'Shape Delta_ut : {Delta_ut.shape}')
-    print(f'Shape AA : {AA.shape}')
-
+    # costate vector at layer t
     lt = AA @ ltp.T
-    print(f'Shape lt : {lt.shape}')
+
     return lt.T, Delta_ut
 
 
@@ -154,17 +158,18 @@ def backward_pass(xx, uu, llambdaT, ):
                 llambda costate trajectory
                 delta_u costate output, i.e., the loss gradient
     """
+    # Costate structure init
     llambda = []
     for index in range(len(d)):  # create the signal structure
         llambda.append(np.zeros((1, d[index])))
     llambda[-1] = llambdaT
-
+    # gradient structure of connection weights init
     Delta_u = []
-    for index in range(len(d)):  # create the signal structure
+    for index in range(len(d) - 1):  # create the signal structure
         Delta_u.append(np.zeros((1, d[index])))
 
-    for t in reversed(range(T-1)):  # T-1,T-2,...,1,0
-        print(t)
+    # run the adjoint dynamics to define the costate structure and the Delta_u structure
+    for t in reversed(range(T - 1)):  # T-1,T-2,...,1,0
         llambda[t], Delta_u[t] = adjoint_dynamics(llambda[t + 1], xx[t], uu[t], t)
 
     return Delta_u
@@ -172,7 +177,7 @@ def backward_pass(xx, uu, llambdaT, ):
 
 ###############################################################
 # GO!
-J = np.zeros(max_iters)  # Cost function
+J = np.zeros(MAX_ITERS)  # Cost function
 
 # Initial Weights / Initial Input Trajectory
 uu = []
@@ -180,28 +185,35 @@ uu = []
 for index in range(len(d) - 1):
     uu.append(np.random.randn(d[index] + 1, d[index + 1]))  # bias considered
 
-for k in range(max_iters):
-    if k % 2 == 0:
-        # print('Cost at k={:d} is {:.4f}'.format(k, J[k - 1])) # da rimuovere
-        print(f"Cost at {k} is {np.round(J[k - 1], decimals=4)}")
-
-    for sample in range(0, 12):
-        data_point = X_train[sample].reshape(1, -1)  # x0
-        label_point = Y_train_class[sample].reshape(1, -1)
+for k in range(MAX_ITERS):
+    success = 0
+    for sample in range(0, N_IMAGES):
+        data_point = X_train[sample].reshape(1, -1)  # input sample
+        label_point = Y_train_class[sample].reshape(1, -1)  # supervised output
 
         # Initial State Trajectory
         xx = forward_pass(uu, data_point)  # forward simulation
+
         # GO!
         # Backward propagation
         llambdaT = 2 * (xx[-1] - label_point)  # nabla J in last layer
         Delta_u = backward_pass(xx, uu, llambdaT)  # the gradient of the loss function
 
         # Update the weights
-        uu = uu - stepsize * Delta_u  # overwriting the old value
+        for t in range(len(d) - 1):
+            uu[t] = uu[t] - stepsize * Delta_u[t]  # overwriting the old value
 
         # Forward propagation
         xx = forward_pass(uu, data_point)
 
         # Store the Loss Value across Iterations
-        J[k] = (xx[-1, :] - label_point) @ (xx[-1, :] - label_point)  # it is the cost at k+1
+        J[k] = (xx[-1] - label_point) @ (xx[-1] - label_point).T  # it is the cost at k+1
         # np.linalg.norm( xx[-1,:] - label_point )**2
+        Y_true = np.argmax(label_point)
+        Y_pred = np.argmax(xx[-1])
+        if Y_true == Y_pred:
+            success += 1
+
+    if k % 2 == 0:
+        accuracy = success / N_IMAGES
+        print(f"Epoch {k} -> Accuracy = {accuracy*100}% , Cost = {np.round(J[k - 1], decimals=4)}")
