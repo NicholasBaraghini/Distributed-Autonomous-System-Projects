@@ -4,8 +4,8 @@ import matplotlib.pyplot as plt
 import networkx as nx
 np.random.seed(1)
 
-
-NN = 6 #number of agents
+''' GENERATION OF THE GRAPH '''
+NN = 6  # number of agents
 
 ###############################################################################
 # Generate Network Binomial Graph
@@ -46,11 +46,11 @@ plt.show()
 
 WW = 1.5 * I_NN + 0.5 * Adj
 
-ONES = np.ones((NN,NN))
-ZEROS = np.zeros((NN,NN))
+ONES = np.ones((NN, NN))
+ZEROS = np.zeros((NN, NN))
 
 # normalize the rows and columns
-while any(abs(np.sum(WW, axis=1)-1))> 10e-10:
+while any(abs(np.sum(WW, axis=1)-1)) > 10e-10:
 	WW = WW/(WW@ONES)
 	WW = WW/(ONES@WW)
 	WW = np.abs(WW)
@@ -61,11 +61,12 @@ with np.printoptions(precision=4, suppress=True):
         np.sum(WW, axis=0)
     ))
 
-print(f"The matrix of the adjacency matrix weighted is: \r\n{WW}")
+# print of matrix generated
+# print(f"The matrix of the adjacency matrix weighted is: \r\n{WW}")
 
 '''
 Normalizing the input data helps to speed up the training. Also, it reduces the chance of getting stuck in local optima, since we're using stochastic gradient descent to find the optimal weights for the network.
 '''
 
-#close the figure
+# close the figure
 plt.close(fig)

@@ -1,3 +1,4 @@
+import matplotlib.pyplot as plt
 from keras.datasets import mnist
 from keras.models import Sequential, load_model
 from keras.layers.core import Dense, Dropout, Activation
@@ -14,6 +15,10 @@ print("y_train shape", y_train.shape)
 print("X_test shape", X_test.shape)
 print("y_test shape", y_test.shape)
 
+''' #plot one image from the training set
+plt.imshow(X_train[3])
+plt.show()
+'''
 # building the input vector from the 28x28 pixels
 X_train = X_train.reshape(60000, 784)
 X_test = X_test.reshape(10000, 784)
@@ -34,5 +39,7 @@ print("Shape before one-hot encoding: ", y_train.shape)
 Y_train = np_utils.to_categorical(y_train, n_classes)
 Y_train[Y_train == 0] = -1      # substitute 0 with -1
 Y_test = np_utils.to_categorical(y_test, n_classes)
-Y_test[Y_test ==0] = -1         # substitute 0 with -1
+Y_test[Y_test == 0] = -1         # substitute 0 with -1
 print("Shape after one-hot encoding: ", Y_train.shape)
+
+
