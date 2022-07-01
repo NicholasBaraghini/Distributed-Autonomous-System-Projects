@@ -52,7 +52,7 @@ print("Shape after one-hot encoding: ", Y_train.shape)
 ###############################################################################
 
 T = 3  # Layers
-d = 300  # Number of neurons in each layer. Same numbers for all the layers
+d = 302  # Number of neurons in each layer. Same numbers for all the layers
 d_out = 10  # Number of neurons in the last layer, that generate the prediction label
 
 # Gradient-Tracking Method Parameters
