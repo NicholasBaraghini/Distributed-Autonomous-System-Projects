@@ -40,20 +40,19 @@ print("Test matrix shape", X_test.shape)
 # one-hot encoding using keras' numpy-related utilities
 n_classes = 10
 print("Shape before one-hot encoding: ", y_train.shape)
-Y_train = np_utils.to_categorical(y_train, n_classes)
-Y_train[Y_train == 0] = -1      # substitute 0 with -1
-Y_test = np_utils.to_categorical(y_test, n_classes)
-Y_test[Y_test == 0] = -1         # substitute 0 with -1
-print("Shape after one-hot encoding: ", Y_train.shape)
+Y_train_class = np_utils.to_categorical(y_train, n_classes)
+Y_train_class[Y_train_class == 0] = -1      # substitute 0 with -1
+Y_test_class = np_utils.to_categorical(y_test, n_classes)
+Y_test_class[Y_test_class == 0] = -1         # substitute 0 with -1
+print("Shape after one-hot encoding: ", Y_train_class.shape)
 
 # the images and labels now are in the correct format
 
 '''SET UP THE NEURAL NETWORK'''
 ###############################################################################
 
-T = 3  # Layers
-d = 302  # Number of neurons in each layer. Same numbers for all the layers
-d_out = 10  # Number of neurons in the last layer, that generate the prediction label
+T = 5  # Layers
+d = [784, 392, 196, 98, 10]  # Number of neurons in each layer. bias already considered
 
 # Gradient-Tracking Method Parameters
 max_iters = 10  # epochs
@@ -72,22 +71,23 @@ def sigmoid_fn_derivative(xi):
 
 
 # Inference: x_tp = f(xt,ut)
-def inference_dynamics(xt, ut):
+def inference_dynamics(xt, ut, t):
     """
       input:
-                xt current state
-                ut current input
+                xt current signal
+                ut current weight matrix
       output:
-                xtp next state
+                xtp next signal
     """
-    xtp = np.zeros(d)
-    for ell in range(d):
-        temp = xt @ ut[ell, 1:] + ut[ell, 0]  # including the bias
+    xtp = np.zeros(d[t+1])
+    temp = np.matmul(ut[1:, :].T, xt) + ut[0, :].T  # save temporarily the product between signal and weights
+    for ell in range(xtp.shape[0]):
+        xtp[ell] = sigmoid_fn(temp[ell])  # x' * u_ell
 
-        xtp[ell] = sigmoid_fn(temp)  # x' * u_ell
+    # for ell in range(len(xtp)):
+    #   temp = xt @ ut[ell, 1:] + ut[ell, 0]  # including the bias
 
     return xtp
-
 
 # Forward Propagation
 def forward_pass(uu, x0):
@@ -98,11 +98,13 @@ def forward_pass(uu, x0):
       output:
                 xx state trajectory: x[1],x[2],..., x[T]
     """
-    xx = np.zeros((T, d))
+    xx = []
+    for index in range(len(d) ):     # create the signal structure
+        xx.append(np.zeros(d[index]))
     xx[0] = x0
 
-    for t in range(T - 1):
-        xx[t + 1] = inference_dynamics(xx[t], uu[t])  # x^+ = f(x,u)
+    for t in range(T-1):
+        xx[t + 1] = inference_dynamics(xx[t], uu[t], t)  # x^+ = f(x,u)
 
     return xx
 
@@ -162,18 +164,23 @@ def backward_pass(xx, uu, llambdaT):
 
     return Delta_u
 
-
+###############################################################
+# GO!
 J = np.zeros(max_iters)  # Cost
 
 # Initial Weights / Initial Input Trajectory
-uu = np.random.randn(T - 1, d, d + 1)
+uu = []
 
-for i in range(0, 10):
-    data_point = X_train[i]
-    label_point = y_train[i]
+for index in range(len(d)-1):
+    uu.append(np.random.randn(d[index]+1, d[index+1]))  # bias considered
+
+
+for sample in range(0, 12):
+    data_point = X_train[sample]  # x0
+    label_point = Y_train_class[sample]
 
     # Initial State Trajectory
-    xx = forward_pass(uu, data_point)  # T x d
+    xx = forward_pass(uu, data_point)  #
 
     # GO!
     for k in range(max_iters):
