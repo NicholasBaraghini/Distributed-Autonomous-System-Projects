@@ -294,12 +294,26 @@ def Cost_Function(Agent, kk):
 J = np.zeros(MAX_ITERS)  # Cost function
 
 # Initial Weights / Initial Input Trajectory
+DD = []
+dummy = []
+dummy2 = []
+for index in range(len(d) - 1):
+    dummy.append(np.zeros((d[index] + 1, d[index + 1])))  # bias considered
+for kk in range(MAX_ITERS):
+    dummy2.append(dummy)
+for Agent in range(N_AGENTS):
+    DD.append(dummy2)
+
+# Initial Gradient direction
 uu = []
 dummy = []
+dummy2 = []
 for index in range(len(d) - 1):
-    dummy.append(np.random.randn(MAX_ITERS, d[index] + 1, d[index + 1]))  # bias considered
+    dummy.append(np.random.randn(d[index] + 1, d[index + 1]))  # bias considered
+for kk in range(MAX_ITERS):
+    dummy2.append(dummy)
 for Agent in range(N_AGENTS):
-    uu.append(dummy)
+    uu.append(dummy2)
 
 JJ = np.zeros(MAX_ITERS)
 dJ = np.zeros(MAX_ITERS)
@@ -352,17 +366,22 @@ for kk in range(MAX_ITERS):
         # Return the indices of the elements of the Adjoint Matrix that are non-zero.
         Nii = np.nonzero(Adj[ii])[0]
 
-        uu[ii][kk + 1] = WW[ii, ii] * uu[ii][kk] - stepsize * DD[ii][kk]
-        for jj in Nii:
-            uu[ii][kk + 1] += WW[ii, jj] * uu[jj][kk]
+        for index in range(len(d) - 1):
+            uu[ii][kk + 1][index] = WW[ii, ii] * uu[ii][kk][index] - stepsize * DD[ii][kk][index]
+            for jj in Nii:
+                uu[ii][kk + 1][index] += WW[ii, jj] * uu[jj][kk][index]
+
+        ## gradient f_uu
+
+        #####################
+
+        for index in range(len(d) - 1):
+            DD[ii][kk + 1][index] = WW[ii, ii] * DD[ii][kk][index] + (dJk_next - dJk)
+            for jj in Nii:
+                DD[ii][kk + 1] += WW[ii, jj] * DD[jj][kk][index]
 
         JJk, dJk = Cost_Function(ii, kk)
         _, dJk_next = Cost_Function(ii, kk + 1)
-
-        DD[ii][kk + 1] = WW[ii, ii] * DD[ii][kk] + (dJk_next - dJk)
-        for jj in Nii:
-            DD[ii][kk + 1] += WW[ii, jj] * DD[jj][kk]
-
         JJ[kk] += JJk
 
     if kk % 2 == 0:
