@@ -53,7 +53,7 @@ Y_test_class[Y_test_class == 0] = -1  # substitute 0 with -1
 
 
 ''' GENERATION OF THE GRAPH '''
-N_AGENTS = 3  # number og agents
+N_AGENTS = 5  # number og agents
 
 ###############################################################################
 # Generate Network Binomial Graph
@@ -61,23 +61,22 @@ p_ER = 0.3
 I_NN = np.eye(N_AGENTS)
 
 for gn in range(100):
-    G = nx.binomial_graph(N_AGENTS, p_ER)
-    Adj = nx.adjacency_matrix(G)
-    Adj = Adj.toarray()
+    Adj = np.random.binomial(1, p_ER, (N_AGENTS, N_AGENTS))
+    Adj = np.logical_or(Adj, Adj.T)  # made it symmetric by doing logical or with the transpose
+    Adj = np.multiply(Adj, np.logical_not(I_NN)).astype(int)  # remove self loops and cast to int
 
-    test = np.linalg.matrix_power((I_NN + Adj), N_AGENTS)
-
+    test = np.linalg.matrix_power(I_NN + Adj, N_AGENTS)  # check if the graph is connected
     if np.all(test > 0):
         print("the graph is connected")
         break
     else:
         print("the graph is NOT connected")
-
+'''
 if 0:
     fig, ax = plt.subplots()
     ax = nx.draw(G, with_labels=True)
     plt.show()
-
+'''
 ###############################################################################
 # Compute mixing matrices
 
@@ -113,14 +112,13 @@ optima, since we're using stochastic gradient descent to find the optimal weight
 
 '''SET UP THE NEURAL NETWORK'''
 ###############################################################################
-
-T = 5  # Layers
-d = [784, 392, 196, 98, 10]  # Number of neurons in each layer. bias already considered
+d = [784, 392, 196, 98, 49, 25, 12,10]  # Number of neurons in each layer. bias already considered
+T = len(d)  # Layers
 
 # Gradient-Tracking Method Parameters
-MAX_ITERS = 20  # epochs
-N_IMAGES = 15  # number of images
-stepsize = 0.025  # learning rate
+MAX_ITERS = 40  # epochs
+N_IMAGES = 50  # number of images
+stepsize = 0.5  # learning rate
 
 ###############################################################################
 # SPLITTING THE DATASET FOR EACH AGENT
@@ -135,12 +133,12 @@ for Agent in range(N_AGENTS):
 ###############################################################################
 # Activation Function
 def sigmoid_fn(xi):
-    return 1 / (1 + np.exp(-xi))
+    return np.ones(xi.shape) / (np.ones(xi.shape) + np.exp(-xi))
 
 
 # Derivative of Activation Function
 def sigmoid_fn_derivative(xi):
-    return sigmoid_fn(xi) * (1 - sigmoid_fn(xi))
+    return sigmoid_fn(xi) * (np.ones(xi.shape) - sigmoid_fn(xi))
 
 
 # Inference: x_tp = f(xt,ut)
@@ -291,32 +289,37 @@ def Cost_Function(Agent, kk):
 ###############################################################
 
 # GO!
-#J = np.zeros(MAX_ITERS)  # Cost function
+# J = np.zeros(MAX_ITERS)  # Cost function
 
 # Initial Weights / Initial Input Trajectory
 uu = []
-dummy = []
-dummy2 = []
-for index in range(len(d) - 1):
-    dummy.append(np.random.randn(d[index] + 1, d[index + 1]))  # bias considered
-for kk in range(MAX_ITERS):
-    dummy2.append(dummy)
 for Agent in range(N_AGENTS):
-    uu.append(dummy2)
+    uu.append([])
+    for kk in range(MAX_ITERS):
+        uu[Agent].append([])
+        for index in range(len(d) - 1):
+            if kk == 0:
+                uu[Agent][kk].append(np.random.randn(d[index] + 1, d[index + 1]))  # bias considered
+            else:
+                uu[Agent][kk].append(np.zeros((d[index] + 1, d[index + 1])))  # bias considered
 
 # Initial Gradient direction
 DD = []
-dummy = []
-dummy2 = []
-for index in range(len(d) - 1):
-    dummy.append(np.zeros((d[index] + 1, d[index + 1])))  # bias considered
-for kk in range(MAX_ITERS):
-    dummy2.append(dummy)
 for Agent in range(N_AGENTS):
-    DD.append(dummy2)
+    DD.append([])
+    for kk in range(MAX_ITERS):
+        DD[Agent].append([])
+        for index in range(len(d) - 1):
+            DD[Agent][kk].append(np.zeros((d[index] + 1, d[index + 1])))  # bias considered
 
 # Initial Gradient of U
-Du = DD
+Du = []
+for Agent in range(N_AGENTS):
+    Du.append([])
+    for kk in range(MAX_ITERS):
+        Du[Agent].append([])
+        for index in range(len(d) - 1):
+            Du[Agent][kk].append(np.zeros((d[index] + 1, d[index + 1])))  # bias considered
 
 JJ = np.zeros(MAX_ITERS)
 dJ = np.zeros(MAX_ITERS)
@@ -327,14 +330,46 @@ for ii in range(N_AGENTS):
     print(f'Agent{ii}', end=' ')
 print('', end='\n')
 
+# Initialize the Discent Du
+for ii in range(N_AGENTS):
+    # Return the indices of the elements of the Adjoint Matrix that are non-zero.
+    Nii = np.nonzero(Adj[ii])[0]
+
+    for Image in range(len(data_point[ii])):
+        # temporarely extract the weight matrix of the current agent
+        # U_temp = uu[Agent][kk]
+
+        "STARTING Neural Network"
+        data_pnt = data_point[ii][Image].reshape(1, -1)  # input sample
+        label_pnt = label_point[ii][Image].reshape(1, -1)  # supervised output
+
+        # --> FORWARD PASS
+        xx = forward_pass(uu[ii][0], data_pnt)  # forward simulation
+
+        # --> BACKWARD PASS
+        llambdaT = 2 * (xx[-1] - label_pnt)  # nabla J in last layer
+        Delta_u = backward_pass(xx, uu[ii][0], llambdaT)  # the gradient of the loss function
+
+        "ENDING Neural Network"
+        # Averaging the Local Gradient of the weight matrix
+        for index in range(len(d) - 1):
+            Du[ii][0][index] += Delta_u[index]
+
+    for index in range(len(d) - 1):
+        uu[ii][1][index] = WW[ii, ii] * uu[ii][0][index] - stepsize * Du[ii][0][index]
+        # compute the Average Consensus of the Network Weights
+        for jj in Nii:
+            uu[ii][1][index] += WW[ii, jj] * uu[jj][0][index]
+
 'Cycle for each Epoch'
-for kk in range(MAX_ITERS-1):
+for kk in range(1, MAX_ITERS - 1):
     'Cycle for each Agent - Computation of local model'
+    # stepsize = 1 / kk
     for Agent in range(N_AGENTS):
         success = 0
         'Cycle for each sample of the dataset per each agent'
         for Image in range(len(data_point[Agent])):
-            # temporarely extract the weight matrix of the cuurent agent
+            # temporarely extract the weight matrix of the current agent
             # U_temp = uu[Agent][kk]
 
             "STARTING Neural Network"
@@ -353,7 +388,6 @@ for kk in range(MAX_ITERS-1):
             for index in range(len(d) - 1):
                 Du[Agent][kk][index] += Delta_u[index]
 
-
             Y_true = np.argmax(label_pnt)
             Y_pred = np.argmax(xx[-1])
 
@@ -361,6 +395,11 @@ for kk in range(MAX_ITERS-1):
                 success += 1
 
         accuracy[Agent, kk] = success / len(data_point[Agent])
+    if kk % 1 == 0:
+        print(f'{kk}', end=' ')
+        for ii in range(N_AGENTS):
+            print(f'{np.round(accuracy[ii, kk] * 100, 2)}%', end=' ')
+        print('', end='\n')
 
     "GRADIENT TRAKING"
     for ii in range(N_AGENTS):
@@ -369,10 +408,10 @@ for kk in range(MAX_ITERS-1):
 
         # Compute the descent for the iteration k
         for index in range(len(d) - 1):
-            DD[ii][kk][index] = WW[ii, ii] * DD[ii][kk-1][index] + (Du[ii][kk][index] - Du[ii][kk - 1][index])
+            DD[ii][kk][index] = WW[ii, ii] * DD[ii][kk - 1][index] + (Du[ii][kk][index] - Du[ii][kk - 1][index])
             # compute the Average Consensus of the descent
             for jj in Nii:
-                DD[ii][kk][index] += WW[ii, jj] * DD[jj][kk-1][index]
+                DD[ii][kk][index] += WW[ii, jj] * DD[jj][kk - 1][index]
 
         # Update the network weigths matrix with the descent
         for index in range(len(d) - 1):
@@ -381,17 +420,10 @@ for kk in range(MAX_ITERS-1):
             for jj in Nii:
                 uu[ii][kk + 1][index] += WW[ii, jj] * uu[jj][kk][index]
 
-
         # Compute the cost for plotting
         JJk, dJk = Cost_Function(ii, kk)
         _, dJk_next = Cost_Function(ii, kk + 1)
         JJ[kk] += JJk
-
-    if kk % 1 == 0:
-        print(f'{kk}', end=' ')
-        for ii in range(N_AGENTS):
-            print(f'{np.round(accuracy[ii, kk], 2)*100}%', end=' ')
-        print('', end='\n')
 
 # Terminal iteration
 for ii in range(N_AGENTS):
@@ -402,7 +434,7 @@ for ii in range(N_AGENTS):
 # Figure 3 : Cost Error Evolution
 if 1:
     plt.figure()
-    plt.semilogy(np.arange(MAX_ITERS), np.abs(JJ), '--', linewidth=3)
+    plt.semilogy(np.arange(MAX_ITERS), JJ, '--', linewidth=3)
     plt.xlabel(r"iterations $t$")
     plt.ylabel(r"$JJ$")
     plt.title("Evolution of the cost error")
