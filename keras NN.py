@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import scipy as sp
 
-
 np.random.seed(0)
 
 ''' IMPORT AND PRE-PROCESSING OF DATASET'''
@@ -54,7 +53,7 @@ Y_test_class[Y_test_class == 0] = -1  # substitute 0 with -1
 
 
 ''' GENERATION OF THE GRAPH '''
-N_AGENTS = 10  # number og agents
+N_AGENTS = 3  # number og agents
 
 ###############################################################################
 # Generate Network Binomial Graph
@@ -74,9 +73,10 @@ for gn in range(100):
     else:
         print("the graph is NOT connected")
 
-fig, ax = plt.subplots()
-ax = nx.draw(G, with_labels=True)
-plt.show()
+if 0:
+    fig, ax = plt.subplots()
+    ax = nx.draw(G, with_labels=True)
+    plt.show()
 
 ###############################################################################
 # Compute mixing matrices
@@ -109,7 +109,7 @@ with np.printoptions(precision=4, suppress=True):
 optima, since we're using stochastic gradient descent to find the optimal weights for the network. '''
 
 # close the figure
-plt.close(fig)
+# plt.close(fig)
 
 '''SET UP THE NEURAL NETWORK'''
 ###############################################################################
@@ -119,7 +119,7 @@ d = [784, 392, 196, 98, 10]  # Number of neurons in each layer. bias already con
 
 # Gradient-Tracking Method Parameters
 MAX_ITERS = 300  # epochs
-N_IMAGES = 100  # number of images
+N_IMAGES = 15  # number of images
 stepsize = 0.025  # learning rate
 
 ###############################################################################
@@ -127,9 +127,10 @@ stepsize = 0.025  # learning rate
 data_point = []
 label_point = []
 for Agent in range(N_AGENTS):
-    data_point.append(X_train[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES].reshape(1, -1))  # input sample
-    label_point.append(Y_train_class[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES].reshape(1, -1))  # supervised
+    data_point.append(X_train[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])  # input sample
+    label_point.append(Y_train_class[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])  # supervised
     # output
+
 
 ###############################################################################
 # Activation Function
@@ -245,50 +246,142 @@ def backward_pass(xx, uu, llambdaT, ):
     return Delta_u
 
 
+# Cost Function
+def Cost_Func(y_pred, y_true):
+    """
+          input:
+                    y_pred: x[1],x[2],..., x[T]
+                    y_true: u[0],u[1],..., u[T-1]
+          output:
+                    J costate trajectory
+                    dJ costate output, i.e., the loss gradient
+        """
+
+    J = (y_pred - y_true) @ (y_pred - y_true).T  # it is the cost at k+1
+    dJ = 2 * (y_pred - y_true)
+    return J, dJ
+
+
+def Cost_Function(Agent, kk):
+    """
+          input:
+                    y_pred: x[1],x[2],..., x[T]
+                    y_true: u[0],u[1],..., u[T-1]
+          output:
+                    J costate trajectory
+                    dJ costate output, i.e., the loss gradient
+        """
+    # Initialize
+    J = 0
+    dJ = 0
+    for sample in range(len(data_point[Agent])):
+        # load the supervised sample
+        data_pnt = data_point[Agent][sample].reshape(1, -1)  # input sample
+        y_true = label_point[Agent][sample].reshape(1, -1)  # supervised output
+
+        # compute the prediction
+        xx = forward_pass(uu[Agent][kk], data_pnt)
+
+        # adding the cost of the new sample
+        J += (xx[-1] - y_true) @ (xx[-1] - y_true).T  # it is the cost at k+1
+        dJ += 2 * (xx[-1] - y_true)
+
+    return J, dJ
+
+
 ###############################################################
 # GO!
 J = np.zeros(MAX_ITERS)  # Cost function
 
 # Initial Weights / Initial Input Trajectory
 uu = []
-
+dummy = []
 for index in range(len(d) - 1):
-    uu.append(np.random.randn(d[index] + 1, d[index + 1]))  # bias considered
+    dummy.append(np.random.randn(MAX_ITERS, d[index] + 1, d[index + 1]))  # bias considered
+for Agent in range(N_AGENTS):
+    uu.append(dummy)
 
+JJ = np.zeros(MAX_ITERS)
+dJ = np.zeros(MAX_ITERS)
+
+'Cycle for each Epoch'
 for kk in range(MAX_ITERS):
     success = 0
+    'Cycle for each Agent - Computation of local model'
     for Agent in range(N_AGENTS):
+        'Cycle for each sample of the dataset per each agent'
         for sample in range(len(data_point[Agent])):
-            # Return the indices of the elements of the Adjoint Matrix that are non-zero.
-            Nii = np.nonzero(Adj[Agent])[0]
-            print(f'Nii = {Nii}\n')
+            # temporarely extract the weight matrix of the cuurent agent
+            U_temp = uu[Agent][kk]
 
-            data_pnt = data_point[Agent][sample]  # input sample
-            label_pnt = label_point[Agent][sample]  # supervised output
+            "STARTING Neural Network"
+            data_pnt = data_point[Agent][sample].reshape(1, -1)  # input sample
+            label_pnt = label_point[Agent][sample].reshape(1, -1)  # supervised output
 
             # Initial State Trajectory
-            xx = forward_pass(uu[Agent], data_pnt)  # forward simulation
+            xx = forward_pass(U_temp, data_pnt)  # forward simulation
 
             # GO!
             # Backward propagation
             llambdaT = 2 * (xx[-1] - label_pnt)  # nabla J in last layer
-            Delta_u = backward_pass(xx, uu[Agent], llambdaT)  # the gradient of the loss function
+            Delta_u = backward_pass(xx, U_temp, llambdaT)  # the gradient of the loss function
 
             # Update the weights
             for t in range(len(d) - 1):
-                uu[t] = uu[Agent][t] - stepsize * Delta_u[t]  # overwriting the old value
+                U_temp[t] = U_temp[t] - stepsize * Delta_u[t]  # overwriting the old value
 
             # Forward propagation
-            xx = forward_pass(uu[Agent], data_pnt)
+            xx = forward_pass(U_temp, data_pnt)
+            "ENDING Neural Network"
+
+            # storing the updated weight matrix in the global structure
+            uu[Agent][kk] = U_temp
 
             # Store the Loss Value across Iterations
-            J[kk] = (xx[-1] - label_pnt) @ (xx[-1] - label_pnt).T  # it is the cost at k+1
+            # J_temp, dJ_temp = Cost_Func(xx[-1], label_pnt)  # it is the cost at k+1
+            # JJ[Agent, kk] += J_temp
+            # dJ[Agent, kk] += dJ_temp
             # np.linalg.norm( xx[-1,:] - label_point )**2
             Y_true = np.argmax(label_pnt)
             Y_pred = np.argmax(xx[-1])
             if Y_true == Y_pred:
                 success += 1
 
+    "GRADIENT TRAKING"
+    for ii in range(N_AGENTS):
+        # Return the indices of the elements of the Adjoint Matrix that are non-zero.
+        Nii = np.nonzero(Adj[ii])[0]
+
+        uu[ii][kk + 1] = WW[ii, ii] * uu[ii][kk] - stepsize * DD[ii][kk]
+        for jj in Nii:
+            uu[ii][kk + 1] += WW[ii, jj] * uu[jj][kk]
+
+        JJk, dJk = Cost_Function(ii, kk)
+        _, dJk_next = Cost_Function(ii, kk + 1)
+
+        DD[ii][kk + 1] = WW[ii, ii] * DD[ii][kk] + (dJk_next - dJk)
+        for jj in Nii:
+            DD[ii][kk + 1] += WW[ii, jj] * DD[jj][kk]
+
+        JJ[kk] += JJk
+
     if kk % 2 == 0:
-        accuracy = success / N_IMAGES
+        accuracy = success / (N_IMAGES * N_AGENTS)
         print(f"Epoch {kk} -> Accuracy = {accuracy * 100}% , Cost = {np.round(J[kk - 1], decimals=4)}")
+
+# Terminal iteration
+for ii in range(N_AGENTS):
+    JJk, dJk = Cost_Function(ii, -1)
+    JJ[-1] += JJk
+
+###############################################################################
+# Figure 3 : Cost Error Evolution
+if 1:
+    plt.figure()
+    plt.semilogy(np.arange(MAX_ITERS), np.abs(JJ - np.repeat(fopt, MAXITERS)), '--', linewidth=3)
+    plt.xlabel(r"iterations $t$")
+    plt.ylabel(r"$JJ$")
+    plt.title("Evolution of the cost error")
+    plt.grid()
+
+plt.show()
