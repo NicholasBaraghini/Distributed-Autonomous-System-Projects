@@ -5,20 +5,22 @@ from keras.layers.core import Dense, Dropout, Activation
 from keras.utils import np_utils
 import numpy as np
 import matplotlib.pyplot as plt
+import networkx as nx
+import scipy as sp
 
 np.random.seed(0)
 
-''' IMPORT AND PR-PROCESSING OF DATASET'''
+''' IMPORT AND PRE-PROCESSING OF DATASET'''
 (X_train, y_train), (X_test, y_test) = mnist.load_data()
 
 # shape of the numpy arrays
-print(X_train.shape, y_train.shape, X_test.shape, y_test.shape)
+# print(X_train.shape, y_train.shape, X_test.shape, y_test.shape)
 
 # let's print the shape before we reshape and normalize
-print("X_train shape", X_train.shape)
-print("y_train shape", y_train.shape)
-print("X_test shape", X_test.shape)
-print("y_test shape", y_test.shape)
+# print("X_train shape", X_train.shape)
+# print("y_train shape", y_train.shape)
+# print("X_test shape", X_test.shape)
+# print("y_test shape", y_test.shape)
 
 ''' #plot one image from the training set
 plt.imshow(X_train[3])
@@ -35,19 +37,78 @@ X_train /= 255
 X_test /= 255
 
 # print the final input shape ready for training
-print("Train matrix shape", X_train.shape)
-print("Test matrix shape", X_test.shape)
+# print("Train matrix shape", X_train.shape)
+# print("Test matrix shape", X_test.shape)
 
 # one-hot encoding using keras' numpy-related utilities
 n_classes = 10
-print("Shape before one-hot encoding: ", y_train.shape)
+# print("Shape before one-hot encoding: ", y_train.shape)
 Y_train_class = np_utils.to_categorical(y_train, n_classes)
 Y_train_class[Y_train_class == 0] = -1  # substitute 0 with -1
 Y_test_class = np_utils.to_categorical(y_test, n_classes)
 Y_test_class[Y_test_class == 0] = -1  # substitute 0 with -1
-print("Shape after one-hot encoding: ", Y_train_class.shape)
+# print("Shape after one-hot encoding: ", Y_train_class.shape)
 
 # the images and labels now are in the correct format
+
+
+''' GENERATION OF THE GRAPH '''
+N_AGENTS = 10  # number og agents
+
+###############################################################################
+# Generate Network Binomial Graph
+p_ER = 0.3
+I_NN = np.eye(N_AGENTS)
+
+for gn in range(100):
+    G = nx.binomial_graph(N_AGENTS, p_ER)
+    Adj = nx.adjacency_matrix(G)
+    Adj = Adj.toarray()
+
+    test = np.linalg.matrix_power((I_NN + Adj), N_AGENTS)
+
+    if np.all(test > 0):
+        print("the graph is connected")
+        break
+    else:
+        print("the graph is NOT connected")
+
+fig, ax = plt.subplots()
+ax = nx.draw(G, with_labels=True)
+plt.show()
+
+###############################################################################
+# Compute mixing matrices
+
+WW = 1.5 * I_NN + 0.5 * Adj
+
+ONES = np.ones((N_AGENTS, N_AGENTS))
+ZEROS = np.zeros((N_AGENTS, N_AGENTS))
+
+# normalize the rows and columns
+cc = 0
+while any(abs(np.sum(WW, axis=1) - 1)) > 10e-10:
+    WW = WW / (WW @ ONES)
+    WW = WW / (ONES @ WW)
+    WW = np.abs(WW)
+    cc += 1
+    if cc > 100: break
+
+
+with np.printoptions(precision=4, suppress=True):
+    print('Check Stochasticity\n row:    {} \n column: {}'.format(
+        np.sum(WW, axis=1),
+        np.sum(WW, axis=0)
+    ))
+
+# print of matrix generated
+# print(f"The matrix of the adjacency matrix weighted is: \r\n{WW}")
+
+'''Normalizing the input data helps to speed up the training. Also, it reduces the chance of getting stuck in local 
+optima, since we're using stochastic gradient descent to find the optimal weights for the network. '''
+
+# close the figure
+plt.close(fig)
 
 '''SET UP THE NEURAL NETWORK'''
 ###############################################################################
@@ -59,6 +120,17 @@ d = [784, 392, 196, 98, 10]  # Number of neurons in each layer. bias already con
 MAX_ITERS = 300  # epochs
 N_IMAGES = 100  # number of images
 stepsize = 0.025  # learning rate
+
+###############################################################################
+# SPLITTING THE DATASET FOR EACH AGENT
+data_point = []
+label_point = []
+for Agent in range(N_AGENTS):
+    data_point[Agent].append(X_train[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES].reshape(1, -1))  # input sample
+    print(data_point)
+    label_point[Agent].append(Y_train_class[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES].reshape(1, -1))  # supervised
+    # output
+
 
 
 ###############################################################################
@@ -185,35 +257,41 @@ uu = []
 for index in range(len(d) - 1):
     uu.append(np.random.randn(d[index] + 1, d[index + 1]))  # bias considered
 
-for k in range(MAX_ITERS):
+for kk in range(MAX_ITERS):
     success = 0
-    for sample in range(0, N_IMAGES):
-        data_point = X_train[sample].reshape(1, -1)  # input sample
-        label_point = Y_train_class[sample].reshape(1, -1)  # supervised output
+    for Agent in range(N_AGENTS):
+        print('ohii')
+        for sample in range(len(data_point[Agent])):
+            # Return the indices of the elements of the Adjoint Matrix that are non-zero.
+            Nii = np.nonzero(Adj[Agent])[0]
+            print(f'Nii = {Nii}\n')
 
-        # Initial State Trajectory
-        xx = forward_pass(uu, data_point)  # forward simulation
+            data_pnt = data_point[Agent][sample]  # input sample
+            label_pnt = label_point[Agent][sample]  # supervised output
 
-        # GO!
-        # Backward propagation
-        llambdaT = 2 * (xx[-1] - label_point)  # nabla J in last layer
-        Delta_u = backward_pass(xx, uu, llambdaT)  # the gradient of the loss function
+            # Initial State Trajectory
+            xx = forward_pass(uu[Agent], data_point)  # forward simulation
 
-        # Update the weights
-        for t in range(len(d) - 1):
-            uu[t] = uu[t] - stepsize * Delta_u[t]  # overwriting the old value
+            # GO!
+            # Backward propagation
+            llambdaT = 2 * (xx[-1] - label_point)  # nabla J in last layer
+            Delta_u = backward_pass(xx, uu[Agent], llambdaT)  # the gradient of the loss function
 
-        # Forward propagation
-        xx = forward_pass(uu, data_point)
+            # Update the weights
+            for t in range(len(d) - 1):
+                uu[t] = uu[Agent][t] - stepsize * Delta_u[t]  # overwriting the old value
 
-        # Store the Loss Value across Iterations
-        J[k] = (xx[-1] - label_point) @ (xx[-1] - label_point).T  # it is the cost at k+1
-        # np.linalg.norm( xx[-1,:] - label_point )**2
-        Y_true = np.argmax(label_point)
-        Y_pred = np.argmax(xx[-1])
-        if Y_true == Y_pred:
-            success += 1
+            # Forward propagation
+            xx = forward_pass(uu[Agent], data_point)
 
-    if k % 2 == 0:
+            # Store the Loss Value across Iterations
+            J[kk] = (xx[-1] - label_point) @ (xx[-1] - label_point).T  # it is the cost at k+1
+            # np.linalg.norm( xx[-1,:] - label_point )**2
+            Y_true = np.argmax(label_point)
+            Y_pred = np.argmax(xx[-1])
+            if Y_true == Y_pred:
+                success += 1
+
+    if kk % 2 == 0:
         accuracy = success / N_IMAGES
-        print(f"Epoch {k} -> Accuracy = {accuracy*100}% , Cost = {np.round(J[k - 1], decimals=4)}")
+        print(f"Epoch {kk} -> Accuracy = {accuracy * 100}% , Cost = {np.round(J[kk - 1], decimals=4)}")
