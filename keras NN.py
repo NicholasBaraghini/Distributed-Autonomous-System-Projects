@@ -219,7 +219,7 @@ def adjoint_dynamics(ltp, xt, ut, t):
 
 
 # Backward Propagation
-def backward_pass(xx, uu, llambdaT, ):
+def backward_pass(xx, uu, llambdaT):
     """
       input:
                 xx state trajectory: x[1],x[2],..., x[T]
@@ -265,12 +265,11 @@ def Cost_Func(y_pred, y_true):
 def Cost_Function(Agent, kk):
     """
           input:
-                    y_pred: x[1],x[2],..., x[T]
-                    y_true: u[0],u[1],..., u[T-1]
+                    Agent, kk
           output:
                     J costate trajectory
                     dJ costate output, i.e., the loss gradient
-        """
+    """
     # Initialize
     J = 0
     dJ = 0
@@ -290,21 +289,11 @@ def Cost_Function(Agent, kk):
 
 
 ###############################################################
+
 # GO!
-J = np.zeros(MAX_ITERS)  # Cost function
+#J = np.zeros(MAX_ITERS)  # Cost function
 
 # Initial Weights / Initial Input Trajectory
-DD = []
-dummy = []
-dummy2 = []
-for index in range(len(d) - 1):
-    dummy.append(np.zeros((d[index] + 1, d[index + 1])))  # bias considered
-for kk in range(MAX_ITERS):
-    dummy2.append(dummy)
-for Agent in range(N_AGENTS):
-    DD.append(dummy2)
-
-# Initial Gradient direction
 uu = []
 dummy = []
 dummy2 = []
@@ -315,78 +304,94 @@ for kk in range(MAX_ITERS):
 for Agent in range(N_AGENTS):
     uu.append(dummy2)
 
+# Initial Gradient direction
+DD = []
+dummy = []
+dummy2 = []
+for index in range(len(d) - 1):
+    dummy.append(np.zeros((d[index] + 1, d[index + 1])))  # bias considered
+for kk in range(MAX_ITERS):
+    dummy2.append(dummy)
+for Agent in range(N_AGENTS):
+    DD.append(dummy2)
+
+# Initial Gradient of U
+Du = DD
+
 JJ = np.zeros(MAX_ITERS)
 dJ = np.zeros(MAX_ITERS)
+accuracy = np.zeros((N_AGENTS, MAX_ITERS))
+
+print(f'iter', end=' ')
+for ii in range(N_AGENTS):
+    print(f'Agent{ii}', end=' ')
+print('', end='\n')
 
 'Cycle for each Epoch'
 for kk in range(MAX_ITERS):
-    success = 0
     'Cycle for each Agent - Computation of local model'
     for Agent in range(N_AGENTS):
+        success = 0
         'Cycle for each sample of the dataset per each agent'
-        for sample in range(len(data_point[Agent])):
+        for Image in range(len(data_point[Agent])):
             # temporarely extract the weight matrix of the cuurent agent
-            U_temp = uu[Agent][kk]
+            # U_temp = uu[Agent][kk]
 
             "STARTING Neural Network"
-            data_pnt = data_point[Agent][sample].reshape(1, -1)  # input sample
-            label_pnt = label_point[Agent][sample].reshape(1, -1)  # supervised output
+            data_pnt = data_point[Agent][Image].reshape(1, -1)  # input sample
+            label_pnt = label_point[Agent][Image].reshape(1, -1)  # supervised output
 
-            # Initial State Trajectory
-            xx = forward_pass(U_temp, data_pnt)  # forward simulation
+            # --> FORWARD PASS
+            xx = forward_pass(uu[Agent][kk], data_pnt)  # forward simulation
 
-            # GO!
-            # Backward propagation
+            # --> BACKWARD PASS
             llambdaT = 2 * (xx[-1] - label_pnt)  # nabla J in last layer
-            Delta_u = backward_pass(xx, U_temp, llambdaT)  # the gradient of the loss function
+            Delta_u = backward_pass(xx, uu[Agent][kk], llambdaT)  # the gradient of the loss function
 
-            # Update the weights
-            for t in range(len(d) - 1):
-                U_temp[t] = U_temp[t] - stepsize * Delta_u[t]  # overwriting the old value
-
-            # Forward propagation
-            xx = forward_pass(U_temp, data_pnt)
             "ENDING Neural Network"
+            # Averaging the Local Gradient of the weight matrix
+            for index in range(len(d) - 1):
+                Du[Agent][kk][index] += Delta_u[index]
 
-            # storing the updated weight matrix in the global structure
-            uu[Agent][kk] = U_temp
 
-            # Store the Loss Value across Iterations
-            # J_temp, dJ_temp = Cost_Func(xx[-1], label_pnt)  # it is the cost at k+1
-            # JJ[Agent, kk] += J_temp
-            # dJ[Agent, kk] += dJ_temp
-            # np.linalg.norm( xx[-1,:] - label_point )**2
             Y_true = np.argmax(label_pnt)
             Y_pred = np.argmax(xx[-1])
+
             if Y_true == Y_pred:
                 success += 1
+
+        accuracy[Agent, kk] = success / len(data_point[Agent])
 
     "GRADIENT TRAKING"
     for ii in range(N_AGENTS):
         # Return the indices of the elements of the Adjoint Matrix that are non-zero.
         Nii = np.nonzero(Adj[ii])[0]
 
+        # Compute the descent for the iteration k
+        for index in range(len(d) - 1):
+            DD[ii][kk][index] = WW[ii, ii] * DD[ii][kk-1][index] + (Du[ii][kk][index] - Du[ii][kk - 1][index])
+            # compute the Average Consensus of the descent
+            for jj in Nii:
+                DD[ii][kk][index] += WW[ii, jj] * DD[jj][kk-1][index]
+
+        # Update the network weigths matrix with the descent
         for index in range(len(d) - 1):
             uu[ii][kk + 1][index] = WW[ii, ii] * uu[ii][kk][index] - stepsize * DD[ii][kk][index]
+            # compute the Average Consensus of the Network Weights
             for jj in Nii:
                 uu[ii][kk + 1][index] += WW[ii, jj] * uu[jj][kk][index]
 
-        ## gradient f_uu
 
-        #####################
-
-        for index in range(len(d) - 1):
-            DD[ii][kk + 1][index] = WW[ii, ii] * DD[ii][kk][index] + (dJk_next - dJk)
-            for jj in Nii:
-                DD[ii][kk + 1] += WW[ii, jj] * DD[jj][kk][index]
-
+        # Compute the cost for plotting
         JJk, dJk = Cost_Function(ii, kk)
         _, dJk_next = Cost_Function(ii, kk + 1)
         JJ[kk] += JJk
 
     if kk % 2 == 0:
-        accuracy = success / (N_IMAGES * N_AGENTS)
-        print(f"Epoch {kk} -> Accuracy = {accuracy * 100}% , Cost = {np.round(J[kk - 1], decimals=4)}")
+        print(f'{kk}', end=' ')
+        for ii in range(N_AGENTS):
+            print(f'{np.round(accuracy[ii, kk], 4)}', end=' ')
+        print('', end='\n')
 
 # Terminal iteration
 for ii in range(N_AGENTS):
