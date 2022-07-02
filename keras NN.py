@@ -80,7 +80,7 @@ if 0:
 ###############################################################################
 # Compute mixing matrices
 
-WW = 1.5 * I_NN + 0.65 * Adj
+WW = 1.5 * I_NN + 0.5 * Adj
 
 ONES = np.ones((N_AGENTS, N_AGENTS))
 ZEROS = np.zeros((N_AGENTS, N_AGENTS))
@@ -116,9 +116,9 @@ d = [784, 392, 196, 10]  # Number of neurons in each layer. bias already conside
 T = len(d)  # Layers
 
 # Gradient-Tracking Method Parameters
-MAX_ITERS = 40  # epochs
-N_IMAGES = 200  # number of images
-stepsize = 0.1  # learning rate
+MAX_ITERS = 30  # epochs
+N_IMAGES = 300  # number of images
+stepsize = 0.05  # learning rate
 
 ###############################################################################
 # SPLITTING THE DATASET FOR EACH AGENT
@@ -327,7 +327,7 @@ for Agent in range(N_AGENTS):
             Du[Agent][kk].append(np.zeros((d[index] + 1, d[index + 1])))  # bias considered
 
 JJ = np.zeros((N_AGENTS, MAX_ITERS))
-dJ = np.zeros((N_AGENTS, MAX_ITERS))
+dJ_norm = np.zeros((N_AGENTS, MAX_ITERS))
 accuracy = np.zeros((N_AGENTS, MAX_ITERS))
 
 print(f'iter', end=' ')
@@ -425,16 +425,18 @@ for kk in range(1, MAX_ITERS - 1):
         for ii in range(N_AGENTS):
             print(f'{np.round(accuracy[ii, kk] * 100, 2)}%', end=' ')
         print('', end='\n')
+
+
 # Terminal iteration
 for kk in range(0, MAX_ITERS):
     for ii in range(N_AGENTS):
         # Compute the cost for plotting
         JJk_i, dJk_i = Cost_Function(ii, kk)
-
+        dJ_norm[ii, kk] = np.sqrt(dJk_i @ dJk_i.T)
         JJ[ii, kk] += np.abs(JJk_i)
 
 ###############################################################################
-# Figure 3 : Cost Error Evolution
+# Figure 1 : Cost Error Evolution
 if 1:
     plt.figure()
     for ii in range(N_AGENTS):
@@ -443,5 +445,16 @@ if 1:
     plt.ylabel(r"$JJ$")
     plt.title("Evolution of the cost error")
     plt.grid()
+plt.show()
 
+###############################################################################
+# Figure 2 : Norm Gradient Error Evolution
+if 1:
+    plt.figure()
+    for ii in range(N_AGENTS):
+        plt.semilogy(np.arange(MAX_ITERS), dJ_norm[ii, :], '--', linewidth=3)
+    plt.xlabel(r"iterations $t$")
+    plt.ylabel(r"$JJ$")
+    plt.title("Norm Gradient Error Evolution")
+    plt.grid()
 plt.show()
