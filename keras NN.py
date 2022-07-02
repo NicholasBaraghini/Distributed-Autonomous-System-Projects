@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import scipy as sp
 
+
 np.random.seed(0)
 
 ''' IMPORT AND PRE-PROCESSING OF DATASET'''
@@ -92,8 +93,8 @@ while any(abs(np.sum(WW, axis=1) - 1)) > 10e-10:
     WW = WW / (ONES @ WW)
     WW = np.abs(WW)
     cc += 1
-    if cc > 100: break
-
+    if cc > 100:
+        break
 
 with np.printoptions(precision=4, suppress=True):
     print('Check Stochasticity\n row:    {} \n column: {}'.format(
@@ -126,12 +127,9 @@ stepsize = 0.025  # learning rate
 data_point = []
 label_point = []
 for Agent in range(N_AGENTS):
-    data_point[Agent].append(X_train[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES].reshape(1, -1))  # input sample
-    print(data_point)
-    label_point[Agent].append(Y_train_class[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES].reshape(1, -1))  # supervised
+    data_point.append(X_train[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES].reshape(1, -1))  # input sample
+    label_point.append(Y_train_class[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES].reshape(1, -1))  # supervised
     # output
-
-
 
 ###############################################################################
 # Activation Function
@@ -260,7 +258,6 @@ for index in range(len(d) - 1):
 for kk in range(MAX_ITERS):
     success = 0
     for Agent in range(N_AGENTS):
-        print('ohii')
         for sample in range(len(data_point[Agent])):
             # Return the indices of the elements of the Adjoint Matrix that are non-zero.
             Nii = np.nonzero(Adj[Agent])[0]
@@ -270,11 +267,11 @@ for kk in range(MAX_ITERS):
             label_pnt = label_point[Agent][sample]  # supervised output
 
             # Initial State Trajectory
-            xx = forward_pass(uu[Agent], data_point)  # forward simulation
+            xx = forward_pass(uu[Agent], data_pnt)  # forward simulation
 
             # GO!
             # Backward propagation
-            llambdaT = 2 * (xx[-1] - label_point)  # nabla J in last layer
+            llambdaT = 2 * (xx[-1] - label_pnt)  # nabla J in last layer
             Delta_u = backward_pass(xx, uu[Agent], llambdaT)  # the gradient of the loss function
 
             # Update the weights
@@ -282,12 +279,12 @@ for kk in range(MAX_ITERS):
                 uu[t] = uu[Agent][t] - stepsize * Delta_u[t]  # overwriting the old value
 
             # Forward propagation
-            xx = forward_pass(uu[Agent], data_point)
+            xx = forward_pass(uu[Agent], data_pnt)
 
             # Store the Loss Value across Iterations
-            J[kk] = (xx[-1] - label_point) @ (xx[-1] - label_point).T  # it is the cost at k+1
+            J[kk] = (xx[-1] - label_pnt) @ (xx[-1] - label_pnt).T  # it is the cost at k+1
             # np.linalg.norm( xx[-1,:] - label_point )**2
-            Y_true = np.argmax(label_point)
+            Y_true = np.argmax(label_pnt)
             Y_pred = np.argmax(xx[-1])
             if Y_true == Y_pred:
                 success += 1
