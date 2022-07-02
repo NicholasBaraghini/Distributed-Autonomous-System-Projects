@@ -118,7 +118,7 @@ T = 5  # Layers
 d = [784, 392, 196, 98, 10]  # Number of neurons in each layer. bias already considered
 
 # Gradient-Tracking Method Parameters
-MAX_ITERS = 300  # epochs
+MAX_ITERS = 20  # epochs
 N_IMAGES = 15  # number of images
 stepsize = 0.025  # learning rate
 
@@ -328,7 +328,7 @@ for ii in range(N_AGENTS):
 print('', end='\n')
 
 'Cycle for each Epoch'
-for kk in range(MAX_ITERS):
+for kk in range(MAX_ITERS-1):
     'Cycle for each Agent - Computation of local model'
     for Agent in range(N_AGENTS):
         success = 0
@@ -387,10 +387,10 @@ for kk in range(MAX_ITERS):
         _, dJk_next = Cost_Function(ii, kk + 1)
         JJ[kk] += JJk
 
-    if kk % 2 == 0:
+    if kk % 1 == 0:
         print(f'{kk}', end=' ')
         for ii in range(N_AGENTS):
-            print(f'{np.round(accuracy[ii, kk], 4)}', end=' ')
+            print(f'{np.round(accuracy[ii, kk], 2)*100}%', end=' ')
         print('', end='\n')
 
 # Terminal iteration
@@ -402,7 +402,7 @@ for ii in range(N_AGENTS):
 # Figure 3 : Cost Error Evolution
 if 1:
     plt.figure()
-    plt.semilogy(np.arange(MAX_ITERS), np.abs(JJ - np.repeat(fopt, MAXITERS)), '--', linewidth=3)
+    plt.semilogy(np.arange(MAX_ITERS), np.abs(JJ), '--', linewidth=3)
     plt.xlabel(r"iterations $t$")
     plt.ylabel(r"$JJ$")
     plt.title("Evolution of the cost error")
