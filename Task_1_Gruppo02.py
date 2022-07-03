@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import scipy as sp
 
+
 np.random.seed(0)
 '''SELECTED TYPE OF CLASSIFIER'''
 # False : Multi-Classifier (it classifies the digit) True: Binary-Classifier (it classifies if it is the digit selected
