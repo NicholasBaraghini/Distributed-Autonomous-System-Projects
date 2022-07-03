@@ -9,6 +9,10 @@ import networkx as nx
 import scipy as sp
 
 np.random.seed(0)
+'''SELECTED TYPE OF CLASSIFIER'''
+# False : Multi-Classifier (it classifies the digit) True: Binary-Classifier (it classifies if it is the digit selected
+# or not)
+BINARY = True
 
 ''' IMPORT AND PRE-PROCESSING OF DATASET'''
 (X_train, y_train), (X_test, y_test) = mnist.load_data()
@@ -39,22 +43,26 @@ X_test /= 255
 # print the final input shape ready for training
 # print("Train matrix shape", X_train.shape)
 # print("Test matrix shape", X_test.shape)
+if BINARY:
+    # digit to be classified
+    CLASS_IDENTIFIED = 4
+    # build the label such that it will be 1 if the image contains the digit chones by CLASS_IDENTIFIED
+    Y_train_class = [1 if y == CLASS_IDENTIFIED else -1 for y in y_train]
+    Y_test_class = [1 if y == CLASS_IDENTIFIED else -1 for y in y_test]
 
-# one-hot encoding using keras' numpy-related utilities
-n_classes = 10
-# print("Shape before one-hot encoding: ", y_train.shape)
-Y_train_class = np_utils.to_categorical(y_train, n_classes)
-# Y_train_class[Y_train_class == 0] = -1  # substitute 0 with -1
-Y_test_class = np_utils.to_categorical(y_test, n_classes)
-# Y_test_class[Y_test_class == 0] = -1  # substitute 0 with -1
-# print("Shape after one-hot encoding: ", Y_train_class.shape)
-
-# the images and labels now are in the correct format
-
+else:
+    # one-hot encoding using keras' numpy-related utilities
+    n_classes = 10
+    # print("Shape before one-hot encoding: ", y_train.shape)
+    Y_train_class = np_utils.to_categorical(y_train, n_classes)
+    # Y_train_class[Y_train_class == 0] = -1  # substitute 0 with -1
+    Y_test_class = np_utils.to_categorical(y_test, n_classes)
+    # Y_test_class[Y_test_class == 0] = -1  # substitute 0 with -1
+    # print("Shape after one-hot encoding: ", Y_train_class.shape)
+    # the images and labels now are in the correct format
 
 ''' GENERATION OF THE GRAPH '''
-N_AGENTS = 3  # number og agents
-
+N_AGENTS = 4  # number og agents
 ###############################################################################
 # Generate Network Binomial Graph
 p_ER = 0.3
@@ -112,13 +120,17 @@ optima, since we're using stochastic gradient descent to find the optimal weight
 
 '''SET UP THE NEURAL NETWORK'''
 ###############################################################################
-d = [784, 512, 512, 65, 10]  # Number of neurons in each layer. bias already considered
+if BINARY:  # Binary classifier
+    d = [784, 512, 512, 65, 2]  # Number of neurons in each layer. bias already considered
+else:  # Multiclass Classifier
+    d = [784, 512, 512, 65, 10]  # Number of neurons in each layer. bias already considered
+
 T = len(d)  # Layers
 
 # Gradient-Tracking Method Parameters
-MAX_ITERS = 20  # epochs
-N_IMAGES = 100  # number of images
-stepsize = 0.1  # learning rate
+MAX_ITERS = 10  # epochs
+N_IMAGES = 200  # number of images
+stepsize = 0.085  # learning rate
 
 ###############################################################################
 # SPLITTING THE DATASET FOR EACH AGENT
@@ -126,13 +138,22 @@ data_point = []
 label_point = []
 data_test = []
 label_test = []
-for Agent in range(N_AGENTS):
-    data_point.append(X_train[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])  # input sample
-    label_point.append(Y_train_class[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])  # supervised
+if BINARY:
+    for Agent in range(N_AGENTS):
+        data_point.append(X_train[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])  # input sample
+        label_point.append(Y_train_class[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES])  # supervised
 
-    data_test.append(X_test[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])
-    label_test.append(Y_test_class[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])
-    # output
+        data_test.append(X_test[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])
+        label_test.append(Y_test_class[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES])
+        # output
+else:
+    for Agent in range(N_AGENTS):
+        data_point.append(X_train[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])  # input sample
+        label_point.append(Y_train_class[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])  # supervised
+
+        data_test.append(X_test[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])
+        label_test.append(Y_test_class[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])
+        # output
 
 
 ###############################################################################
@@ -293,7 +314,10 @@ def Cost_Function(Agent, kk):
     for Image in range(N_IMAGES):
         # load the supervised sample
         data_pnt = data_test[Agent][Image].reshape(1, -1)  # input sample
-        y_true = label_test[Agent][Image].reshape(1, -1)  # supervised output
+        if BINARY:
+            y_true = label_test[Agent][Image] # supervised output
+        else:
+            y_true = label_test[Agent][Image].reshape(1, -1)  # supervised output
 
         # compute the prediction
         xx = forward_pass(uu[Agent][kk], data_pnt)
@@ -356,7 +380,10 @@ for ii in range(N_AGENTS):
     for Image in range(len(data_point[Agent])):
         "STARTING Neural Network"
         data_pnt = data_point[ii][Image].reshape(1, -1)  # input sample
-        label_pnt = label_point[ii][Image].reshape(1, -1)  # supervised output
+        if BINARY:
+            label_pnt = label_point[ii][Image]  # supervised output
+        else:
+            label_pnt = label_point[ii][Image].reshape(1, -1)  # supervised output
 
         # --> FORWARD PASS
         xx = forward_pass(uu[ii][0], data_pnt)  # forward simulation
@@ -370,8 +397,8 @@ for ii in range(N_AGENTS):
 
         # Averaging the Local Gradient of the weight matrix
         for index in range(len(d) - 1):
-            Du[ii][0][index] += Delta_u[index]/len(data_point[Agent])
-            YY[ii][0][index] += Delta_u[index]/len(data_point[Agent])
+            Du[ii][0][index] += Delta_u[index] / len(data_point[Agent])
+            YY[ii][0][index] += Delta_u[index] / len(data_point[Agent])
 
     for index in range(len(d) - 1):
         uu[ii][1][index] = WW[ii, ii] * uu[ii][0][index] - stepsize * Du[ii][0][index]
@@ -392,7 +419,10 @@ for kk in range(1, MAX_ITERS - 1):
         for Image in range(len(data_point[Agent])):
             "STARTING Neural Network"
             data_pnt = data_point[Agent][Image].reshape(1, -1)  # input sample
-            label_pnt = label_point[Agent][Image].reshape(1, -1)  # supervised output
+            if BINARY:
+                label_pnt = label_point[Agent][Image]  # supervised output
+            else:
+                label_pnt = label_point[Agent][Image].reshape(1, -1)  # supervised output
 
             # --> FORWARD PASS
             # xx = forward_pass(uu[Agent][kk], data_pnt)  # forward simulation

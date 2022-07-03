@@ -9,6 +9,10 @@ import networkx as nx
 import scipy as sp
 
 np.random.seed(0)
+'''SELECTED TYPE OF CLASSIFIER'''
+# False : Multi-Classifier (it classifies the digit) True: Binary-Classifier (it classifies if it is the digit selected
+# or not)
+BINARY = True
 
 ''' IMPORT AND PRE-PROCESSING OF DATASET'''
 (X_train, y_train), (X_test, y_test) = mnist.load_data()
@@ -39,22 +43,26 @@ X_test /= 255
 # print the final input shape ready for training
 # print("Train matrix shape", X_train.shape)
 # print("Test matrix shape", X_test.shape)
+if BINARY:
+    # digit to be classified
+    CLASS_IDENTIFIED = 4
+    # build the label such that it will be 1 if the image contains the digit chones by CLASS_IDENTIFIED
+    Y_train_class = [1 if y == CLASS_IDENTIFIED else -1 for y in y_train]
+    Y_test_class = [1 if y == CLASS_IDENTIFIED else -1 for y in y_test]
 
-# one-hot encoding using keras' numpy-related utilities
-n_classes = 10
-# print("Shape before one-hot encoding: ", y_train.shape)
-Y_train_class = np_utils.to_categorical(y_train, n_classes)
-Y_train_class[Y_train_class == 0] = -1  # substitute 0 with -1
-Y_test_class = np_utils.to_categorical(y_test, n_classes)
-Y_test_class[Y_test_class == 0] = -1  # substitute 0 with -1
-# print("Shape after one-hot encoding: ", Y_train_class.shape)
-
-# the images and labels now are in the correct format
-
+else:
+    # one-hot encoding using keras' numpy-related utilities
+    n_classes = 10
+    # print("Shape before one-hot encoding: ", y_train.shape)
+    Y_train_class = np_utils.to_categorical(y_train, n_classes)
+    # Y_train_class[Y_train_class == 0] = -1  # substitute 0 with -1
+    Y_test_class = np_utils.to_categorical(y_test, n_classes)
+    # Y_test_class[Y_test_class == 0] = -1  # substitute 0 with -1
+    # print("Shape after one-hot encoding: ", Y_train_class.shape)
+    # the images and labels now are in the correct format
 
 ''' GENERATION OF THE GRAPH '''
-N_AGENTS = 5  # number og agents
-
+N_AGENTS = 4  # number og agents
 ###############################################################################
 # Generate Network Binomial Graph
 p_ER = 0.3
@@ -112,13 +120,17 @@ optima, since we're using stochastic gradient descent to find the optimal weight
 
 '''SET UP THE NEURAL NETWORK'''
 ###############################################################################
-d = [784, 392, 196, 98, 10]  # Number of neurons in each layer. bias already considered
+if BINARY:  # Binary classifier
+    d = [784, 512, 512, 65, 2]  # Number of neurons in each layer. bias already considered
+else:  # Multiclass Classifier
+    d = [784, 512, 512, 65, 10]  # Number of neurons in each layer. bias already considered
+
 T = len(d)  # Layers
 
 # Gradient-Tracking Method Parameters
-MAX_ITERS = 2  # epochs
-N_IMAGES = 100  # number of images
-stepsize = 0.0875  # learning rate
+MAX_ITERS = 10  # epochs
+N_IMAGES = 200  # number of images
+stepsize = 0.085  # learning rate
 
 ###############################################################################
 # SPLITTING THE DATASET FOR EACH AGENT
@@ -126,28 +138,37 @@ data_point = []
 label_point = []
 data_test = []
 label_test = []
-for Agent in range(N_AGENTS):
-    data_point.append(X_train[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])  # input sample
-    label_point.append(Y_train_class[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])  # supervised
+if BINARY:
+    for Agent in range(N_AGENTS):
+        data_point.append(X_train[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])  # input sample
+        label_point.append(Y_train_class[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES])  # supervised
 
-    data_test.append(X_test[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])
-    label_test.append(Y_test_class[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])
-    # output
+        data_test.append(X_test[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])
+        label_test.append(Y_test_class[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES])
+        # output
+else:
+    for Agent in range(N_AGENTS):
+        data_point.append(X_train[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])  # input sample
+        label_point.append(Y_train_class[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])  # supervised
+
+        data_test.append(X_test[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])
+        label_test.append(Y_test_class[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])
+        # output
 
 
 ###############################################################################
 # Activation Function
 def sigmoid_fn(xi):
-    return np.ones(xi.shape) / (np.ones(xi.shape) + np.exp(-xi))
+    return 1 / (1 + np.exp(-xi))
 
 
 def ReLu(xi):
-    return xi*(xi > 0)
+    return xi * (xi > 0)
 
 
 # Derivative of Activation Function
 def sigmoid_fn_derivative(xi):
-    return sigmoid_fn(xi) * (np.ones(xi.shape) - sigmoid_fn(xi))
+    return sigmoid_fn(xi) * (1 - sigmoid_fn(xi))
 
 
 def ReLu_derivative(xi):
@@ -164,10 +185,12 @@ def inference_dynamics(xt, ut, t):
                 xtp next signal
     """
     # save temporarily the product between signal and weights
+    biases = ut[:, 0].reshape(1, -1)
+    con_weight = ut[:, 1:].T
+    temp = xt @ con_weight + biases
+    xtp = sigmoid_fn(temp)  # ReLu(temp)
 
-    temp = xt @ ut[1:, :] + ut[0, :]
-
-    return ReLu(temp)
+    return xtp
 
 
 # Forward Propagation
@@ -208,26 +231,29 @@ def adjoint_dynamics(ltp, xt, ut, t):
     """
     # Initialization
     Delta_ut = np.ones(ut.shape)
-    d_sigma = np.zeros((1, d[t + 1]))
+    # d_sigma = np.zeros((1, d[t + 1]))
 
     # linear composition of neurons activations with the weights + bias
-    temp = xt @ ut[1:, :] + ut[0, :]
+    biases = ut[:, 0].reshape(1, -1)
+    con_weight = ut[:, 1:].T
+    temp = xt @ con_weight + biases
 
     # compute the gradient of the activations
-    for ell in range(d_sigma.shape[0]):
-        d_sigma[ell] = ReLu_derivative(temp[ell])
+    d_sigma = sigmoid_fn_derivative(temp)  # ReLu_derivative(temp[ell])
 
     # compute df_dx
-    AA = (ut[1:, :] * d_sigma)
+    AA = (con_weight * d_sigma).T
 
     # compute df_du
-    Delta_ut[0, :] = ltp * d_sigma  # bias term
-    Delta_ut[1:, :] = np.tile(xt, (d[t + 1], 1)).T * (ltp * d_sigma)
+    Bias_term = (ltp * d_sigma).reshape(1, -1)
+    Delta_ut[:, 0] = Bias_term  # bias term
+    Tile_Matrix = np.tile(xt, (d[t + 1], 1))
+    Delta_ut[:, 1:] = Tile_Matrix * Bias_term.T
 
     # costate vector at layer t
-    lt = AA @ ltp.T
+    lt = ltp @ AA  # NB: ltp is a row !! -> A.T @ ltp.T = ltp @ A
 
-    return lt.T, Delta_ut
+    return lt, Delta_ut
 
 
 # Backward Propagation
@@ -288,7 +314,10 @@ def Cost_Function(Agent, kk):
     for Image in range(N_IMAGES):
         # load the supervised sample
         data_pnt = data_test[Agent][Image].reshape(1, -1)  # input sample
-        y_true = label_test[Agent][Image].reshape(1, -1)  # supervised output
+        if BINARY:
+            y_true = label_test[Agent][Image] # supervised output
+        else:
+            y_true = label_test[Agent][Image].reshape(1, -1)  # supervised output
 
         # compute the prediction
         xx = forward_pass(uu[Agent][kk], data_pnt)
@@ -313,18 +342,18 @@ for Agent in range(N_AGENTS):
         uu[Agent].append([])
         for index in range(len(d) - 1):
             if kk == 0:
-                uu[Agent][kk].append(np.random.randn(d[index] + 1, d[index + 1]))  # bias considered
+                uu[Agent][kk].append(np.random.randn(d[index + 1], d[index] + 1))  # bias considered
             else:
-                uu[Agent][kk].append(np.zeros((d[index] + 1, d[index + 1])))  # bias considered
+                uu[Agent][kk].append(np.zeros((d[index + 1], d[index] + 1)))  # bias considered
 
 # Initial Gradient direction
-DD = []
+YY = []
 for Agent in range(N_AGENTS):
-    DD.append([])
+    YY.append([])
     for kk in range(MAX_ITERS):
-        DD[Agent].append([])
+        YY[Agent].append([])
         for index in range(len(d) - 1):
-            DD[Agent][kk].append(np.zeros((d[index] + 1, d[index + 1])))  # bias considered
+            YY[Agent][kk].append(np.zeros((d[index + 1], d[index] + 1)))  # bias considered
 
 # Initial Gradient of U
 Du = []
@@ -333,7 +362,7 @@ for Agent in range(N_AGENTS):
     for kk in range(MAX_ITERS):
         Du[Agent].append([])
         for index in range(len(d) - 1):
-            Du[Agent][kk].append(np.zeros((d[index] + 1, d[index + 1])))  # bias considered
+            Du[Agent][kk].append(np.zeros((d[index + 1], d[index] + 1)))  # bias considered
 
 JJ = np.zeros((N_AGENTS, MAX_ITERS))
 dJ_norm = np.zeros((N_AGENTS, MAX_ITERS))
@@ -344,28 +373,32 @@ for ii in range(N_AGENTS):
     print(f'Agent{ii}', end=' ')
 print('', end='\n')
 
-xx = 0
 # Initialize the Discent Du
 for ii in range(N_AGENTS):
     # Return the indices of the elements of the Adjoint Matrix that are non-zero.
     Nii = np.nonzero(Adj[ii])[0]
+    for Image in range(len(data_point[Agent])):
+        "STARTING Neural Network"
+        data_pnt = data_point[ii][Image].reshape(1, -1)  # input sample
+        if BINARY:
+            label_pnt = label_point[ii][Image]  # supervised output
+        else:
+            label_pnt = label_point[ii][Image].reshape(1, -1)  # supervised output
 
-    "STARTING Neural Network"
-    data_pnt = data_point[ii][0].reshape(1, -1)  # input sample
-    label_pnt = label_point[ii][0].reshape(1, -1)  # supervised output
+        # --> FORWARD PASS
+        xx = forward_pass(uu[ii][0], data_pnt)  # forward simulation
 
-    # --> FORWARD PASS
-    xx = forward_pass(uu[ii][0], data_pnt)  # forward simulation
+        # --> BACKWARD PASS
+        prediction = xx[-1]
+        llambdaT = 2 * (prediction - label_pnt)  # nabla J in last layer
+        Delta_u = backward_pass(xx, uu[ii][0], llambdaT)  # the gradient of the loss function
 
-    # --> BACKWARD PASS
-    prediction = xx[-1]
-    llambdaT = - 2 * (xx[-1] - label_pnt)  # nabla J in last layer
-    Delta_u = backward_pass(xx, uu[ii][0], llambdaT)  # the gradient of the loss function
+        "ENDING Neural Network"
 
-    "ENDING Neural Network"
-    # Averaging the Local Gradient of the weight matrix
-    for index in range(len(d) - 1):
-        Du[ii][0][index] += Delta_u[index]
+        # Averaging the Local Gradient of the weight matrix
+        for index in range(len(d) - 1):
+            Du[ii][0][index] += Delta_u[index] / len(data_point[Agent])
+            YY[ii][0][index] += Delta_u[index] / len(data_point[Agent])
 
     for index in range(len(d) - 1):
         uu[ii][1][index] = WW[ii, ii] * uu[ii][0][index] - stepsize * Du[ii][0][index]
@@ -375,6 +408,7 @@ for ii in range(N_AGENTS):
 
     # --> FORWARD PASS
     xx = forward_pass(uu[ii][1], data_pnt)  # forward simulation
+
 'Cycle for each Epoch'
 for kk in range(1, MAX_ITERS - 1):
     'Cycle for each Agent - Computation of local model'
@@ -382,13 +416,13 @@ for kk in range(1, MAX_ITERS - 1):
     for Agent in range(N_AGENTS):
         success = 0
         'Cycle for each sample of the dataset per each agent'
-        for Image in range(1, len(data_point[Agent])):
-            # temporarely extract the weight matrix of the current agent
-            # U_temp = uu[Agent][kk]
-
+        for Image in range(len(data_point[Agent])):
             "STARTING Neural Network"
             data_pnt = data_point[Agent][Image].reshape(1, -1)  # input sample
-            label_pnt = label_point[Agent][Image].reshape(1, -1)  # supervised output
+            if BINARY:
+                label_pnt = label_point[Agent][Image]  # supervised output
+            else:
+                label_pnt = label_point[Agent][Image].reshape(1, -1)  # supervised output
 
             # --> FORWARD PASS
             # xx = forward_pass(uu[Agent][kk], data_pnt)  # forward simulation
@@ -402,7 +436,7 @@ for kk in range(1, MAX_ITERS - 1):
             # Averaging the Local Gradient of the weight matrix
             for index in range(len(d) - 1):
                 uu[Agent][kk + 1][index] = uu[Agent][kk][index] - stepsize * Delta_u[index]  # overwriting the old value
-                Du[Agent][kk][index] += Delta_u[index] / (len(data_point[Agent]) - 1)
+                Du[Agent][kk][index] += Delta_u[index] / len(data_point[Agent])
 
             # --> FORWARD PASS
             xx = forward_pass(uu[Agent][kk + 1], data_pnt)  # forward simulation
@@ -416,21 +450,21 @@ for kk in range(1, MAX_ITERS - 1):
         accuracy[Agent, kk] = success / len(data_point[Agent])
 
     "GRADIENT TRAKING"
-    if False:
+    if True:
         for ii in range(N_AGENTS):
             # Return the indices of the elements of the Adjoint Matrix that are non-zero.
             Nii = np.nonzero(Adj[ii])[0]
 
             # Compute the descent for the iteration k
             for index in range(len(d) - 1):
-                DD[ii][kk][index] = WW[ii, ii] * DD[ii][kk - 1][index] + (Du[ii][kk][index] - Du[ii][kk - 1][index])
+                YY[ii][kk][index] = WW[ii, ii] * YY[ii][kk - 1][index] + (Du[ii][kk][index] - Du[ii][kk - 1][index])
                 # compute the Average Consensus of the descent
                 for jj in Nii:
-                    DD[ii][kk][index] += WW[ii, jj] * DD[jj][kk - 1][index]
+                    YY[ii][kk][index] += WW[ii, jj] * YY[jj][kk - 1][index]
 
             # Update the network weigths matrix with the descent
             for index in range(len(d) - 1):
-                uu[ii][kk + 1][index] = WW[ii, ii] * uu[ii][kk][index] - stepsize * DD[ii][kk][index]
+                uu[ii][kk + 1][index] = WW[ii, ii] * uu[ii][kk][index] - stepsize * YY[ii][kk][index]
                 # compute the Average Consensus of the Network Weights
                 for jj in Nii:
                     uu[ii][kk + 1][index] += WW[ii, jj] * uu[jj][kk][index]
