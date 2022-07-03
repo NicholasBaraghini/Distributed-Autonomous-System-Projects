@@ -213,18 +213,21 @@ def adjoint_dynamics(ltp, xt, ut, t):
     d_sigma = np.zeros((1, d[t + 1]))
 
     # linear composition of neurons activations with the weights + bias
-    temp = xt @ ut[1:, :] + ut[0, :]
+    biases = ut[:, 0].reshape(1, -1)
+    con_weight = ut[:, 1:].T
+    temp = xt @ con_weight + biases
 
     # compute the gradient of the activations
     for ell in range(d_sigma.shape[0]):
         d_sigma[ell] = sigmoid_fn_derivative(temp[ell])  # ReLu_derivative(temp[ell])
 
     # compute df_dx
-    AA = (ut[1:, :] * d_sigma)
+    AA = (con_weight * d_sigma)
 
     # compute df_du
-    Delta_ut[0, :] = ltp * d_sigma  # bias term
-    Delta_ut[1:, :] = np.tile(xt, (d[t + 1], 1)).T * (ltp * d_sigma)
+    Bias_term = ltp * d_sigma
+    Delta_ut[:, 0] = Bias_term  # bias term
+    Delta_ut[:, 1:] = np.tile(xt, (d[t + 1],1)) * Bias_term
 
     # costate vector at layer t
     lt = AA @ ltp.T
