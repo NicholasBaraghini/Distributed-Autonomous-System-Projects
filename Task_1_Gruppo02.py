@@ -138,16 +138,16 @@ for Agent in range(N_AGENTS):
 ###############################################################################
 # Activation Function
 def sigmoid_fn(xi):
-    return 1/ (1 + np.exp(-xi))
+    return np.ones(xi.shape) / (np.ones(xi.shape) + np.exp(-xi))
 
 
 def ReLu(xi):
-    return xi * (xi > 0)
+    return xi*(xi > 0)
 
 
 # Derivative of Activation Function
 def sigmoid_fn_derivative(xi):
-    return sigmoid_fn(xi) * (1 - sigmoid_fn(xi))
+    return sigmoid_fn(xi) * (np.ones(xi.shape) - sigmoid_fn(xi))
 
 
 def ReLu_derivative(xi):
@@ -164,12 +164,10 @@ def inference_dynamics(xt, ut, t):
                 xtp next signal
     """
     # save temporarily the product between signal and weights
-    biases = ut[:, 0].reshape(1, -1)
-    con_weight = ut[:, 1:].T
-    temp = xt @ con_weight + biases
-    xtp = sigmoid_fn(temp)  # ReLu(temp)
 
-    return xtp
+    temp = xt @ ut[1:, :] + ut[0, :]
+
+    return ReLu(temp)
 
 
 # Forward Propagation
@@ -217,7 +215,7 @@ def adjoint_dynamics(ltp, xt, ut, t):
 
     # compute the gradient of the activations
     for ell in range(d_sigma.shape[0]):
-        d_sigma[ell] = sigmoid_fn_derivative(temp[ell])  # ReLu_derivative(temp[ell])
+        d_sigma[ell] = ReLu_derivative(temp[ell])
 
     # compute df_dx
     AA = (ut[1:, :] * d_sigma)
@@ -315,9 +313,9 @@ for Agent in range(N_AGENTS):
         uu[Agent].append([])
         for index in range(len(d) - 1):
             if kk == 0:
-                uu[Agent][kk].append(np.random.randn(d[index + 1], d[index] + 1))  # bias considered
+                uu[Agent][kk].append(np.random.randn(d[index] + 1, d[index + 1]))  # bias considered
             else:
-                uu[Agent][kk].append(np.zeros((d[index + 1] + 1, d[index])))  # bias considered
+                uu[Agent][kk].append(np.zeros((d[index] + 1, d[index + 1])))  # bias considered
 
 # Initial Gradient direction
 DD = []
@@ -326,7 +324,7 @@ for Agent in range(N_AGENTS):
     for kk in range(MAX_ITERS):
         DD[Agent].append([])
         for index in range(len(d) - 1):
-            DD[Agent][kk].append(np.zeros((d[index + 1], d[index] + 1)))  # bias considered
+            DD[Agent][kk].append(np.zeros((d[index] + 1, d[index + 1])))  # bias considered
 
 # Initial Gradient of U
 Du = []
@@ -335,7 +333,7 @@ for Agent in range(N_AGENTS):
     for kk in range(MAX_ITERS):
         Du[Agent].append([])
         for index in range(len(d) - 1):
-            Du[Agent][kk].append(np.zeros((d[index + 1], d[index] + 1)))  # bias considered
+            Du[Agent][kk].append(np.zeros((d[index] + 1, d[index + 1])))  # bias considered
 
 JJ = np.zeros((N_AGENTS, MAX_ITERS))
 dJ_norm = np.zeros((N_AGENTS, MAX_ITERS))
