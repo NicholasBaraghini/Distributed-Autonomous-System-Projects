@@ -271,7 +271,7 @@ print(f"The matrix of the adjacency matrix weighted is: \r\n{WW}\n\n")
 # _____________________________________________________________________________
 ''' SPLITTING THE DATASET FOR EACH AGENT '''
 
-N_IMAGES = 66  # Images Per Agent
+N_IMAGES = 30  # Images Per Agent
 
 data_point = []
 label_point = []
@@ -306,8 +306,8 @@ else:  # Multiclass Classifier
 T = len(d)
 
 # Gradient-Tracking Method Parameters
-MAX_ITERS = 200  # epochs
-stepsize = 0.035  # learning rate
+MAX_ITERS = 1000  # epochs
+stepsize = 0.015  # learning rate
 
 ###############################################################################
 ''' START THE ALGORITHM'''
