@@ -583,36 +583,4 @@ if NormGradientErrorEvolution_YES:
 plt.show()
 
 ###############################################################################
-# Figure 4 : ADAM learning rate evolution
-ADAM_lr_plot = True
-if ADAM_lr_plot:
-    plt.figure()
-    for Agent in range(N_AGENTS):
-        plt.plot(np.arange(MAX_ITERS), learning_rate[Agent, :, T - 1].flatten().tolist(), '--', linewidth=3)
-    plt.xlabel(r"iterations $t$")
-    plt.ylim(1e-5, -1e-5)
-    plt.title(r"Learning rate Evolution per agent$ ")
-    plt.grid()
-    plt.savefig(lpf + f"/plot/task1/LearningRate_{N_AGENTS}_{MAX_ITERS}_{GT_YES}.jpg", transparent=True)
-plt.show()
 
-###############################################################################
-# Figure 3 : Consensus in Matrix of Weights
-ConsensusWeights_YES = True
-if ConsensusWeights_YES:
-    plt.figure()
-    uit = np.zeros((N_AGENTS, MAX_ITERS))
-    for Agent in range(N_AGENTS):
-        for t in range(MAX_ITERS):
-            uuu = uu[Agent][t][1][1]
-            print(f'uuu : {uuu.shape}')
-            uit[Agent, t] = uuu
-
-        plt.semilogy(np.arange(MAX_ITERS), uit[Agent, :], '--', linewidth=3)
-
-    plt.xlabel(r"iterations $t$")
-    # plt.ylabel(r"$JJ$")
-    plt.title(r"Consensus in Matrix of Weights : element $U[1,1]$ ")
-    plt.grid()
-    plt.savefig(lpf + f"/plot/task1/WeightConsensus_{N_AGENTS}_{MAX_ITERS}_{GT_YES}.jpg", transparent=True)
-plt.show()
