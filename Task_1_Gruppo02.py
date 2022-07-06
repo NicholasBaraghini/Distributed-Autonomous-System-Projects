@@ -9,6 +9,21 @@ import networkx as nx
 import scipy as sp
 
 np.random.seed(seed=7)
+#####################################################################################
+'''SIMULATION PARAMETERS'''
+# False : Multi-Classifier (it classifies the digit) True: Binary-Classifier (it classifies if it is the digit selected
+# or not)
+BINARY = True
+
+N_AGENTS = 10  # number og agents
+p_ER = 0.8  # probability of generate a connection
+
+N_IMAGES = 100  # Images Per Agent
+
+# Gradient-Tracking Method Parameters
+MAX_ITERS = 10  # epochs
+stepsize = 0.035  # learning rate
+GT_YES = True  # Enable Gradient tracking
 
 #####################################################################################
 ''''USEFULL FUNCTIONS'''
@@ -176,10 +191,6 @@ def Cost_Function(Agent, kk):
 #####################################################################################
 '''SELECTED TYPE OF CLASSIFIER'''
 
-# False : Multi-Classifier (it classifies the digit) True: Binary-Classifier (it classifies if it is the digit selected
-# or not)
-BINARY = True
-
 ''' IMPORT AND PRE-PROCESSING OF DATASET'''
 # LOADING the Mnist Dataset
 (X_train, y_train), (X_test, y_test) = mnist.load_data()
@@ -219,10 +230,7 @@ else:
 ###############################################################################
 ''' GENERATION OF THE GRAPH '''
 
-N_AGENTS = 4  # number og agents
-
 # Generate Network Binomial Graph
-p_ER = 0.3
 I_NN = np.eye(N_AGENTS)
 
 for gn in range(100):
@@ -271,8 +279,6 @@ print(f"The matrix of the adjacency matrix weighted is: \r\n{WW}\n\n")
 # _____________________________________________________________________________
 ''' SPLITTING THE DATASET FOR EACH AGENT '''
 
-N_IMAGES = 30  # Images Per Agent
-
 data_point = []
 label_point = []
 data_test = []
@@ -304,11 +310,6 @@ else:  # Multiclass Classifier
 
 # Number of Layers
 T = len(d)
-
-# Gradient-Tracking Method Parameters
-MAX_ITERS = 1000  # epochs
-stepsize = 0.015  # learning rate
-
 ###############################################################################
 ''' START THE ALGORITHM'''
 
@@ -432,7 +433,7 @@ for kk in range(1, MAX_ITERS - 1):
         accuracy[Agent, kk] = success / len(data_point[Agent])
 
     "GRADIENT TRAKING"
-    if True:
+    if GT_YES:
         for ii in range(N_AGENTS):
             # Return the indices of the elements of the Adjoint Matrix that are non-zero.
             Nii = np.nonzero(Adj[ii])[0]
@@ -465,8 +466,10 @@ for kk in range(0, MAX_ITERS):
         JJ[ii, kk] += np.abs(JJk_i)
 
 ###############################################################################
+lpf = "C:/Users/barag/Documents/GitHub/Distributed-Autonomous-System-Projects"
 # Figure 1 : Cost Error Evolution
-if 1:
+CostErrorEvolution_YES = True
+if CostErrorEvolution_YES:
     plt.figure()
     for ii in range(N_AGENTS):
         plt.semilogy(np.arange(MAX_ITERS), JJ[ii, :], '--', linewidth=3)
@@ -474,11 +477,14 @@ if 1:
     plt.ylabel(r"$JJ$")
     plt.title("Evolution of the cost error")
     plt.grid()
+    plt.savefig(lpf + f"/plot/task1/Cost_Error_{N_AGENTS}_{MAX_ITERS}_{GT_YES}.jpg", transparent=True)
+
 plt.show()
 
 ###############################################################################
 # Figure 2 : Norm Gradient Error Evolution
-if 0:
+NormGradientErrorEvolution_YES = True
+if NormGradientErrorEvolution_YES:
     plt.figure()
     for ii in range(N_AGENTS):
         plt.semilogy(np.arange(MAX_ITERS), dJ_norm[ii, :], '--', linewidth=3)
@@ -486,4 +492,5 @@ if 0:
     plt.ylabel(r"$JJ$")
     plt.title("Norm Gradient Error Evolution")
     plt.grid()
+    plt.savefig(lpf + f"/plot/task1/Norm_Grad_Error_{N_AGENTS}_{MAX_ITERS}_{GT_YES}.jpg", transparent=True)
 plt.show()
