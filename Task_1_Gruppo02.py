@@ -4,13 +4,12 @@ import networkx as nx
 from keras.datasets import mnist
 from keras.utils import np_utils
 
-
 np.random.seed(seed=7)
 #####################################################################################
 '''SIMULATION PARAMETERS'''
 # False : Multi-Classifier (it classifies the digit) True: Binary-Classifier (it classifies if it is the digit selected
 # or not)
-BINARY = False
+BINARY = True
 
 N_AGENTS = 5  # number og agents
 p_ER = 0.85  # probability of generate a connection
@@ -18,9 +17,10 @@ p_ER = 0.85  # probability of generate a connection
 N_IMAGES = 80  # Images Per Agent
 
 # Gradient-Tracking Method Parameters
-MAX_ITERS = 10  # epochs
-stepsize = 1  # learning rate
-alpha = 0.25
+MAX_ITERS = 14  # epochs
+stepsize = 0.5  # nominal learning rate
+ADAM_Yes = True  # Activate the ADAM algorithm to computre the optimal learning rate or use a standard diminishing learning rate
+
 GT_YES = True  # Enable Gradient tracking
 
 #####################################################################################
@@ -429,10 +429,15 @@ for Agent in range(N_AGENTS):
             YY[Agent][0][index] += Delta_u[index] / len(Train_data[Agent])
 
     # Learning rate update
-    lr, gg_tp, ss_tp = ADAM(gg[Agent, 0], ss[Agent, 0], Du[Agent][0][index], stepsize)
-    learning_rate[Agent, 0, index] = np.sum(lr) / (len(lr.flatten().tolist()))
-    gg[Agent, 1] = np.sum(gg_tp) / (len(gg_tp.flatten().tolist()))
-    ss[Agent, 1] = np.sum(ss_tp) / (len(ss_tp.flatten().tolist()))
+    if ADAM_Yes:
+        for index in range(len(d) - 1):
+            lr, gg_tp, ss_tp = ADAM(gg[Agent, 0], ss[Agent, 0], Du[Agent][0][index], stepsize)
+            learning_rate[Agent, 0, index] = np.sum(lr) / (len(lr.flatten().tolist()))
+            gg[Agent, 1] = np.sum(gg_tp) / (len(gg_tp.flatten().tolist()))
+            ss[Agent, 1] = np.sum(ss_tp) / (len(ss_tp.flatten().tolist()))
+    else:
+        for index in range(len(d) - 1):
+            learning_rate[Agent, 0, index] = stepsize ** 0
 
     for index in range(len(d) - 1):
         uu[Agent][1][index] = WW[Agent, Agent] * uu[Agent][0][index] - learning_rate[Agent, 0, index] * Du[Agent][0][
@@ -444,8 +449,6 @@ for Agent in range(N_AGENTS):
 # __________________________________CYCLE FOR EACH EPOCH____________________________________
 'Cycle for each Epoch'
 for kk in range(1, MAX_ITERS - 1):
-    # Diminiscing Step-Size
-    # stepsize = alpha ** kk
     'Cycle for each Agent - Computation of local model'
     for Agent in range(N_AGENTS):
         # Counter of correctly classified samples
@@ -473,10 +476,15 @@ for kk in range(1, MAX_ITERS - 1):
                 Du[Agent][kk][index] += Delta_u[index] / len(Train_data[Agent])
 
         # Learning rate update
-        lr, gg_tp, ss_tp = ADAM(gg[Agent, kk], ss[Agent, kk], Du[Agent][kk][index], stepsize)
-        learning_rate[Agent, kk, index] = np.sum(lr) / (len(lr.flatten().tolist()))
-        gg[Agent, kk + 1] = np.sum(gg_tp) / (len(gg_tp.flatten().tolist()))
-        ss[Agent, kk + 1] = np.sum(ss_tp) / (len(ss_tp.flatten().tolist()))
+        if ADAM_Yes:
+            for index in range(len(d) - 1):
+                lr, gg_tp, ss_tp = ADAM(gg[Agent, kk], ss[Agent, kk], Du[Agent][kk][index], stepsize)
+                learning_rate[Agent, kk, index] = np.sum(lr) / (len(lr.flatten().tolist()))
+                gg[Agent, kk + 1] = np.sum(gg_tp) / (len(gg_tp.flatten().tolist()))
+                ss[Agent, kk + 1] = np.sum(ss_tp) / (len(ss_tp.flatten().tolist()))
+        else:
+            for index in range(len(d) - 1):
+                learning_rate[Agent, kk, index] = stepsize ** kk
 
     # Print The Actual Cost
     if kk % 1 == 0:
@@ -580,9 +588,9 @@ ADAM_lr_plot = True
 if ADAM_lr_plot:
     plt.figure()
     for Agent in range(N_AGENTS):
-        plt.semilogy(np.arange(MAX_ITERS), learning_rate[Agent, :, T - 1], '--', linewidth=3)
+        plt.plot(np.arange(MAX_ITERS), learning_rate[Agent, :, T - 1].flatten().tolist(), '--', linewidth=3)
     plt.xlabel(r"iterations $t$")
-    # plt.ylabel(r"$JJ$")
+    plt.ylim(1e-5, -1e-5)
     plt.title(r"Learning rate Evolution per agent$ ")
     plt.grid()
     plt.savefig(lpf + f"/plot/task1/LearningRate_{N_AGENTS}_{MAX_ITERS}_{GT_YES}.jpg", transparent=True)
@@ -590,13 +598,14 @@ plt.show()
 
 ###############################################################################
 # Figure 3 : Consensus in Matrix of Weights
-ConsensusWeights_YES = False
+ConsensusWeights_YES = True
 if ConsensusWeights_YES:
     plt.figure()
     uit = np.zeros((N_AGENTS, MAX_ITERS))
     for Agent in range(N_AGENTS):
         for t in range(MAX_ITERS):
-            uuu = uu[Agent][t][1][1][1]
+            uuu = uu[Agent][t][1][1]
+            print(f'uuu : {uuu.shape}')
             uit[Agent, t] = uuu
 
         plt.semilogy(np.arange(MAX_ITERS), uit[Agent, :], '--', linewidth=3)
