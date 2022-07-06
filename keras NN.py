@@ -8,155 +8,27 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import scipy as sp
 
-np.random.seed(0)
-'''SELECTED TYPE OF CLASSIFIER'''
+np.random.seed(seed=7)
+#####################################################################################
+'''SIMULATION PARAMETERS'''
 # False : Multi-Classifier (it classifies the digit) True: Binary-Classifier (it classifies if it is the digit selected
 # or not)
 BINARY = True
 
-''' IMPORT AND PRE-PROCESSING OF DATASET'''
-(X_train, y_train), (X_test, y_test) = mnist.load_data()
+N_AGENTS = 10  # number og agents
+p_ER = 0.8  # probability of generate a connection
 
-# shape of the numpy arrays
-# print(X_train.shape, y_train.shape, X_test.shape, y_test.shape)
-
-# let's print the shape before we reshape and normalize
-# print("X_train shape", X_train.shape)
-# print("y_train shape", y_train.shape)
-# print("X_test shape", X_test.shape)
-# print("y_test shape", y_test.shape)
-
-''' #plot one image from the training set
-plt.imshow(X_train[3])
-plt.show()
-'''
-# building the input vector from the 28x28 pixels
-X_train = X_train.reshape(60000, 784)
-X_test = X_test.reshape(10000, 784)
-X_train = X_train.astype('float32')
-X_test = X_test.astype('float32')
-
-# normalizing the data to help with the training
-X_train /= 255
-X_test /= 255
-
-# print the final input shape ready for training
-# print("Train matrix shape", X_train.shape)
-# print("Test matrix shape", X_test.shape)
-if BINARY:
-    # digit to be classified
-    CLASS_IDENTIFIED = 4
-    # build the label such that it will be 1 if the image contains the digit chones by CLASS_IDENTIFIED
-    Y_train_class = [1 if y == CLASS_IDENTIFIED else -1 for y in y_train]
-    Y_test_class = [1 if y == CLASS_IDENTIFIED else -1 for y in y_test]
-
-else:
-    # one-hot encoding using keras' numpy-related utilities
-    n_classes = 10
-    # print("Shape before one-hot encoding: ", y_train.shape)
-    Y_train_class = np_utils.to_categorical(y_train, n_classes)
-    # Y_train_class[Y_train_class == 0] = -1  # substitute 0 with -1
-    Y_test_class = np_utils.to_categorical(y_test, n_classes)
-    # Y_test_class[Y_test_class == 0] = -1  # substitute 0 with -1
-    # print("Shape after one-hot encoding: ", Y_train_class.shape)
-    # the images and labels now are in the correct format
-
-''' GENERATION OF THE GRAPH '''
-N_AGENTS = 4  # number og agents
-###############################################################################
-# Generate Network Binomial Graph
-p_ER = 0.3
-I_NN = np.eye(N_AGENTS)
-
-for gn in range(100):
-    Adj = np.random.binomial(1, p_ER, (N_AGENTS, N_AGENTS))
-    Adj = np.logical_or(Adj, Adj.T)  # made it symmetric by doing logical or with the transpose
-    Adj = np.multiply(Adj, np.logical_not(I_NN)).astype(int)  # remove self loops and cast to int
-
-    test = np.linalg.matrix_power(I_NN + Adj, N_AGENTS)  # check if the graph is connected
-    if np.all(test > 0):
-        print("the graph is connected")
-        break
-    else:
-        print("the graph is NOT connected")
-'''
-if 0:
-    fig, ax = plt.subplots()
-    ax = nx.draw(G, with_labels=True)
-    plt.show()
-'''
-###############################################################################
-# Compute mixing matrices
-
-WW = 1.5 * I_NN + 0.5 * Adj
-
-ONES = np.ones((N_AGENTS, N_AGENTS))
-ZEROS = np.zeros((N_AGENTS, N_AGENTS))
-
-# normalize the rows and columns
-cc = 0
-while any(abs(np.sum(WW, axis=1) - 1)) > 10e-10:
-    WW = WW / (WW @ ONES)
-    WW = WW / (ONES @ WW)
-    WW = np.abs(WW)
-    cc += 1
-    if cc > 100:
-        break
-
-with np.printoptions(precision=4, suppress=True):
-    print('Check Stochasticity\n row:    {} \n column: {}'.format(
-        np.sum(WW, axis=1),
-        np.sum(WW, axis=0)
-    ))
-
-# print of matrix generated
-# print(f"The matrix of the adjacency matrix weighted is: \r\n{WW}")
-
-'''Normalizing the input data helps to speed up the training. Also, it reduces the chance of getting stuck in local 
-optima, since we're using stochastic gradient descent to find the optimal weights for the network. '''
-
-# close the figure
-# plt.close(fig)
-
-'''SET UP THE NEURAL NETWORK'''
-###############################################################################
-if BINARY:  # Binary classifier
-    d = [784, 512, 512, 65, 2]  # Number of neurons in each layer. bias already considered
-else:  # Multiclass Classifier
-    d = [784, 512, 512, 65, 10]  # Number of neurons in each layer. bias already considered
-
-T = len(d)  # Layers
+N_IMAGES = 100  # Images Per Agent
 
 # Gradient-Tracking Method Parameters
 MAX_ITERS = 10  # epochs
-N_IMAGES = 200  # number of images
-stepsize = 0.085  # learning rate
+stepsize = 0.035  # learning rate
+GT_YES = True  # Enable Gradient tracking
 
-###############################################################################
-# SPLITTING THE DATASET FOR EACH AGENT
-data_point = []
-label_point = []
-data_test = []
-label_test = []
-if BINARY:
-    for Agent in range(N_AGENTS):
-        data_point.append(X_train[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])  # input sample
-        label_point.append(Y_train_class[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES])  # supervised
-
-        data_test.append(X_test[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])
-        label_test.append(Y_test_class[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES])
-        # output
-else:
-    for Agent in range(N_AGENTS):
-        data_point.append(X_train[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])  # input sample
-        label_point.append(Y_train_class[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])  # supervised
-
-        data_test.append(X_test[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])
-        label_test.append(Y_test_class[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])
-        # output
+#####################################################################################
+''''USEFULL FUNCTIONS'''
 
 
-###############################################################################
 # Activation Function
 def sigmoid_fn(xi):
     return 1 / (1 + np.exp(-xi))
@@ -216,9 +88,7 @@ def forward_pass(uu, x0):
     return xx
 
 
-# Adjoint dynamics:
-#   state:    lambda_t = A.T lambda_tp
-# output: deltau_t = B.T lambda_tp
+# Adjoint Dynamics
 def adjoint_dynamics(ltp, xt, ut, t):
     """
       input:
@@ -228,6 +98,10 @@ def adjoint_dynamics(ltp, xt, ut, t):
       output:
                 llambda_t next costate
                 delta_ut loss gradient wrt u_t
+
+     Adjoint dynamics:
+       state:    lambda_t = A.T lambda_tp
+       output: deltau_t = B.T lambda_tp
     """
     # Initialization
     Delta_ut = np.ones(ut.shape)
@@ -285,21 +159,6 @@ def backward_pass(xx, uu, llambdaT):
 
 
 # Cost Function
-def Cost_Func(y_pred, y_true):
-    """
-          input:
-                    y_pred: x[1],x[2],..., x[T]
-                    y_true: u[0],u[1],..., u[T-1]
-          output:
-                    J costate trajectory
-                    dJ costate output, i.e., the loss gradient
-        """
-
-    J = (y_pred - y_true) @ (y_pred - y_true).T  # it is the cost at k+1
-    dJ = 2 * (y_pred - y_true)
-    return J, dJ
-
-
 def Cost_Function(Agent, kk):
     """
           input:
@@ -315,7 +174,7 @@ def Cost_Function(Agent, kk):
         # load the supervised sample
         data_pnt = data_test[Agent][Image].reshape(1, -1)  # input sample
         if BINARY:
-            y_true = label_test[Agent][Image] # supervised output
+            y_true = label_test[Agent][Image]  # supervised output
         else:
             y_true = label_test[Agent][Image].reshape(1, -1)  # supervised output
 
@@ -329,10 +188,130 @@ def Cost_Function(Agent, kk):
     return J, dJ
 
 
-###############################################################
+#####################################################################################
+'''SELECTED TYPE OF CLASSIFIER'''
 
-# GO!
-# J = np.zeros(MAX_ITERS)  # Cost function
+''' IMPORT AND PRE-PROCESSING OF DATASET'''
+# LOADING the Mnist Dataset
+(X_train, y_train), (X_test, y_test) = mnist.load_data()
+
+# building the input vector from the 28x28 pixels
+X_train = X_train.reshape(60000, 784)
+X_test = X_test.reshape(10000, 784)
+X_train = X_train.astype('float32')
+X_test = X_test.astype('float32')
+
+# DATA NORMALIZATION
+'''Normalizing the input data helps to speed up the training. Also, it reduces the chance of getting stuck in local 
+optima, since we're using stochastic gradient descent to find the optimal weights for the network. '''
+X_train /= 255
+X_test /= 255
+
+# LABELS MAPPING according to the classification problem we are solving (if binary or multiclass
+# classification)
+if BINARY:
+    # digit to be classified
+    CLASS_IDENTIFIED = 4
+    # build the label such that it will be 1 if the image contains the digit chones by CLASS_IDENTIFIED
+    Y_train_class = [1 if y == CLASS_IDENTIFIED else -1 for y in y_train]
+    Y_test_class = [1 if y == CLASS_IDENTIFIED else -1 for y in y_test]
+
+else:
+    # one-hot encoding using keras' numpy-related utilities
+    # number of classes inside the dataset
+    n_classes = 10
+    Y_train_class = np_utils.to_categorical(y_train, n_classes)
+    # Y_train_class[Y_train_class == 0] = -1  # substitute 0 with -1
+    Y_test_class = np_utils.to_categorical(y_test, n_classes)
+    # Y_test_class[Y_test_class == 0] = -1  # substitute 0 with -1
+
+'''  the images and labels now are in the correct format '''
+
+###############################################################################
+''' GENERATION OF THE GRAPH '''
+
+# Generate Network Binomial Graph
+I_NN = np.eye(N_AGENTS)
+
+for gn in range(100):
+    Adj = np.random.binomial(1, p_ER, (N_AGENTS, N_AGENTS))
+    Adj = np.logical_or(Adj, Adj.T)  # made it symmetric by doing logical or with the transpose
+    Adj = np.multiply(Adj, np.logical_not(I_NN)).astype(int)  # remove self loops and cast to int
+
+    test = np.linalg.matrix_power(I_NN + Adj, N_AGENTS)  # check if the graph is connected
+    if np.all(test > 0):
+        print("the graph is connected")
+        break
+    else:
+        print("the graph is NOT connected")
+
+if 0:
+    fig, ax = plt.subplots()
+    ax = nx.draw(Adj, with_labels=True)
+    plt.show()
+# _____________________________________________________________________________
+'''COMPUTE MIXING MATRICES'''
+
+WW = 1.5 * I_NN + 0.5 * Adj
+
+ONES = np.ones((N_AGENTS, N_AGENTS))
+ZEROS = np.zeros((N_AGENTS, N_AGENTS))
+
+# normalize the rows and columns
+cc = 0
+while any(abs(np.sum(WW, axis=1) - 1)) > 10e-10:
+    WW = WW / (WW @ ONES)
+    WW = WW / (ONES @ WW)
+    WW = np.abs(WW)
+    cc += 1
+    if cc > 100:
+        break
+
+with np.printoptions(precision=4, suppress=True):
+    print('Check Stochasticity\n row:    {} \n column: {}'.format(
+        np.sum(WW, axis=1),
+        np.sum(WW, axis=0)
+    ))
+
+# print of matrix generated
+print(f"The matrix of the adjacency matrix weighted is: \r\n{WW}\n\n")
+
+# _____________________________________________________________________________
+''' SPLITTING THE DATASET FOR EACH AGENT '''
+
+data_point = []
+label_point = []
+data_test = []
+label_test = []
+if BINARY:
+    for Agent in range(N_AGENTS):
+        data_point.append(X_train[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])  # input sample
+        label_point.append(Y_train_class[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES])  # supervised
+
+        data_test.append(X_test[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])
+        label_test.append(Y_test_class[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES])
+        # output
+else:
+    for Agent in range(N_AGENTS):
+        data_point.append(X_train[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])  # input sample
+        label_point.append(Y_train_class[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])  # supervised
+
+        data_test.append(X_test[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])
+        label_test.append(Y_test_class[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])
+        # output
+
+###############################################################################
+'''SET UP THE NEURAL NETWORK'''
+
+if BINARY:  # Binary classifier
+    d = [784, 512, 512, 2]  # Number of neurons in each layer. bias already considered
+else:  # Multiclass Classifier
+    d = [784, 512, 512, 10]  # Number of neurons in each layer. bias already considered
+
+# Number of Layers
+T = len(d)
+###############################################################################
+''' START THE ALGORITHM'''
 
 # Initial Weights / Initial Input Trajectory
 uu = []
@@ -364,10 +343,13 @@ for Agent in range(N_AGENTS):
         for index in range(len(d) - 1):
             Du[Agent][kk].append(np.zeros((d[index + 1], d[index] + 1)))  # bias considered
 
+# Initialization of the Cost Function, its Gradient and the accuracy
 JJ = np.zeros((N_AGENTS, MAX_ITERS))
 dJ_norm = np.zeros((N_AGENTS, MAX_ITERS))
 accuracy = np.zeros((N_AGENTS, MAX_ITERS))
 
+# Prep. of the printing
+print('__TRAINING SET ACCURACY__')
 print(f'iter', end=' ')
 for ii in range(N_AGENTS):
     print(f'Agent{ii}', end=' ')
@@ -378,13 +360,13 @@ for ii in range(N_AGENTS):
     # Return the indices of the elements of the Adjoint Matrix that are non-zero.
     Nii = np.nonzero(Adj[ii])[0]
     for Image in range(len(data_point[Agent])):
-        "STARTING Neural Network"
+        # Extract the sample Imgage from the training set
         data_pnt = data_point[ii][Image].reshape(1, -1)  # input sample
         if BINARY:
             label_pnt = label_point[ii][Image]  # supervised output
         else:
             label_pnt = label_point[ii][Image].reshape(1, -1)  # supervised output
-
+        "STARTING Neural Network"
         # --> FORWARD PASS
         xx = forward_pass(uu[ii][0], data_pnt)  # forward simulation
 
@@ -392,7 +374,6 @@ for ii in range(N_AGENTS):
         prediction = xx[-1]
         llambdaT = 2 * (prediction - label_pnt)  # nabla J in last layer
         Delta_u = backward_pass(xx, uu[ii][0], llambdaT)  # the gradient of the loss function
-
         "ENDING Neural Network"
 
         # Averaging the Local Gradient of the weight matrix
@@ -407,50 +388,52 @@ for ii in range(N_AGENTS):
             uu[ii][1][index] += WW[ii, jj] * uu[jj][0][index]
 
     # --> FORWARD PASS
-    xx = forward_pass(uu[ii][1], data_pnt)  # forward simulation
+    # xx = forward_pass(uu[ii][1], data_pnt)  # forward simulation
 
 'Cycle for each Epoch'
 for kk in range(1, MAX_ITERS - 1):
+    # Diminiscing Step-Size
+    # stepsize = 10 / kk
     'Cycle for each Agent - Computation of local model'
-    # stepsize = 1 / kk
     for Agent in range(N_AGENTS):
+        # Counter of correctly classified samples
         success = 0
         'Cycle for each sample of the dataset per each agent'
         for Image in range(len(data_point[Agent])):
-            "STARTING Neural Network"
+            # Extract the sample Imgage from the training set
             data_pnt = data_point[Agent][Image].reshape(1, -1)  # input sample
             if BINARY:
                 label_pnt = label_point[Agent][Image]  # supervised output
             else:
                 label_pnt = label_point[Agent][Image].reshape(1, -1)  # supervised output
 
+            "STARTING Neural Network"
             # --> FORWARD PASS
-            # xx = forward_pass(uu[Agent][kk], data_pnt)  # forward simulation
+            xx = forward_pass(uu[Agent][kk], data_pnt)  # forward simulation
 
             # --> BACKWARD PASS
             prediction = xx[-1]
             llambdaT = 2 * (prediction - label_pnt)  # nabla J in last layer
             Delta_u = backward_pass(xx, uu[Agent][kk], llambdaT)  # the gradient of the loss function
-
             "ENDING Neural Network"
+
             # Averaging the Local Gradient of the weight matrix
             for index in range(len(d) - 1):
-                uu[Agent][kk + 1][index] = uu[Agent][kk][index] - stepsize * Delta_u[index]  # overwriting the old value
                 Du[Agent][kk][index] += Delta_u[index] / len(data_point[Agent])
 
-            # --> FORWARD PASS
-            xx = forward_pass(uu[Agent][kk + 1], data_pnt)  # forward simulation
+            # Compute the prediction
+            # xx = forward_pass(uu[Agent][kk + 1], data_pnt)  # forward simulation
 
             Y_true = np.argmax(label_pnt)
             Y_pred = np.argmax(xx[-1])
-
             if Y_true == Y_pred:
                 success += 1
 
+        # Accuracy of The training Set
         accuracy[Agent, kk] = success / len(data_point[Agent])
 
     "GRADIENT TRAKING"
-    if True:
+    if GT_YES:
         for ii in range(N_AGENTS):
             # Return the indices of the elements of the Adjoint Matrix that are non-zero.
             Nii = np.nonzero(Adj[ii])[0]
@@ -483,8 +466,10 @@ for kk in range(0, MAX_ITERS):
         JJ[ii, kk] += np.abs(JJk_i)
 
 ###############################################################################
+lpf = "C:/Users/barag/Documents/GitHub/Distributed-Autonomous-System-Projects"
 # Figure 1 : Cost Error Evolution
-if 1:
+CostErrorEvolution_YES = True
+if CostErrorEvolution_YES:
     plt.figure()
     for ii in range(N_AGENTS):
         plt.semilogy(np.arange(MAX_ITERS), JJ[ii, :], '--', linewidth=3)
@@ -492,11 +477,14 @@ if 1:
     plt.ylabel(r"$JJ$")
     plt.title("Evolution of the cost error")
     plt.grid()
+    plt.savefig(lpf + f"/plot/task1/Cost_Error_{N_AGENTS}_{MAX_ITERS}_{GT_YES}.jpg", transparent=True)
+
 plt.show()
 
 ###############################################################################
 # Figure 2 : Norm Gradient Error Evolution
-if 0:
+NormGradientErrorEvolution_YES = True
+if NormGradientErrorEvolution_YES:
     plt.figure()
     for ii in range(N_AGENTS):
         plt.semilogy(np.arange(MAX_ITERS), dJ_norm[ii, :], '--', linewidth=3)
@@ -504,4 +492,5 @@ if 0:
     plt.ylabel(r"$JJ$")
     plt.title("Norm Gradient Error Evolution")
     plt.grid()
+    plt.savefig(lpf + f"/plot/task1/Norm_Grad_Error_{N_AGENTS}_{MAX_ITERS}_{GT_YES}.jpg", transparent=True)
 plt.show()
