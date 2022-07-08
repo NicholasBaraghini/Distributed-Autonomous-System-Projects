@@ -8,14 +8,13 @@ from imblearn.under_sampling import RandomUnderSampler
 np.random.seed(seed=7)
 #####################################################################################
 '''SIMULATION PARAMETERS'''
-# False : Multi-Classifier (it classifies the digit) True: Binary-Classifier (it classifies if the digit is even or odd)
-BINARY = True
+# Digit to be Identified
 TARGET_CLASS = 7
 
-N_AGENTS = 6  # number og agents
+N_AGENTS = 8  # number og agents
 p_ER = 0.6  # probability of generate a connection
 
-N_IMAGES = 70  # Images Per Agent
+N_IMAGES = 60  # Images Per Agent
 
 # Gradient-Tracking Method Parameters
 MAX_ITERS = 100  # epochs
@@ -152,7 +151,7 @@ def backward_pass(xx, uu, llambdaT):
 
 
 # Cost Function
-def Cost_Function(Prediction, Label, BINARY):
+def Cost_Function(Prediction, Label):
     """
           input:
                     Prediction : Output prediction of the class from the Neural Network
@@ -161,19 +160,17 @@ def Cost_Function(Prediction, Label, BINARY):
                     J cost functiion of an item
                     dJ gradient of J
     """
-    if BINARY:
-        # Binary Cross Entropy For the Binary Classification
-        Y = (Label + 1) / 2
-        J = -(Y * np.log(prediction) + (1 - Y) * np.log(1 - prediction))  # (Prediction - Label) * (Prediction - Label)
-        dJ = (Prediction - Y) / (Prediction * (1 - prediction) + 0.00001)
-    else:
-        J = 10 * (Label - Prediction) @ (Label - Prediction).T
-        dJ = 2 * 10 * (Label - Prediction)
+
+    # Cross Entropy For the Binary Classification adapted for class label -1 and 1
+    Y = (Label + 1) / 2
+    J = -(Y * np.log(prediction) + (1 - Y) * np.log(1 - prediction))  # (Prediction - Label) * (Prediction - Label)
+    # Gradient of the Cross Entropy
+    dJ = (Prediction - Y) / (Prediction * (1 - prediction) + 0.00001)
 
     return J, dJ
 
 
-def Prediction_Performance(uu, Test_data, Test_label, BINARY):
+def Prediction_Performance(uu, Test_data, Test_label):
     N_TEST_SAMPLES = len(Test_data)
     accuracy = np.zeros(N_AGENTS)
     predictions = np.zeros((N_AGENTS, N_TEST_SAMPLES))
@@ -183,23 +180,16 @@ def Prediction_Performance(uu, Test_data, Test_label, BINARY):
         for Image in range(N_TEST_SAMPLES):
             # Extract the sample Imgage from the test set
             data_pnt = Test_data[Image].reshape(1, -1)  # input sample
-            if BINARY:
-                label_pnt = Test_label[Image]  # supervised output
-            else:
-                label_pnt = np.argmax(Test_label[Image].reshape(1, -1))  # supervised output
+
+            label_pnt = Test_label[Image]  # supervised output
 
             # --> FORWARD PASS
             xx = forward_pass(uu[Agent][MAX_ITERS - 1], data_pnt)  # forward simulation
-            if BINARY:
-                if xx[-1] <= 0:
-                    prediction = -1
-                else:
-                    prediction = 1
+
+            if xx[-1] <= 0:
+                prediction = -1
             else:
-                pred = np.zeros(n_classes)
-                pred[np.argmax(xx[-1])] = 1
-                prediction = np.argmax(pred)
-                label_pnt = np.argmax(label_pnt)
+                prediction = 1
 
             if prediction == label_pnt:
                 # Accuracy on the test Set
@@ -244,27 +234,18 @@ optima, since we're using stochastic gradient descent to find the optimal weight
 X_train /= 255
 X_test /= 255
 
-# LABELS MAPPING according to the classification problem we are solving (if binary or multiclass
-# classification)
-if BINARY:
-    print('#########################    DATASET BALANCE CHECK    ###########################\n')
-    # build the label such that it will be 1 if the image contains the TARGET_CLASS digit, -1 otherwise
-    Y_train_class = [-1 if y == TARGET_CLASS else 1 for y in y_train]
-    Y_test_class = [-1 if y == TARGET_CLASS else 1 for y in y_test]
-    # Balancing the training set
-    RandomUS = RandomUnderSampler()
-    X_train_bal, y_train_bal = RandomUS.fit_resample(X_train, Y_train_class)
-    X_test_bal, y_test_bal = RandomUS.fit_resample(X_test, Y_test_class)
+print('#########################    DATASET BALANCE CHECK    ###########################\n')
+# build the label such that it will be 1 if the image contains the TARGET_CLASS digit, -1 otherwise
+Y_train_class = [-1 if y == TARGET_CLASS else 1 for y in y_train]
+Y_test_class = [-1 if y == TARGET_CLASS else 1 for y in y_test]
+# Balancing the training set
 
-    print(f' TRAINING SET BALANCED ENTROPHY = {np.sum(y_train_bal) / len(y_train_bal)}')
-    print(f' TEST SET BALANCED ENTROPHY = {np.sum(y_test_bal) / len(y_test_bal)}')
+RandomUS = RandomUnderSampler()
+X_train_bal, y_train_bal = RandomUS.fit_resample(X_train, Y_train_class)
+X_test_bal, y_test_bal = RandomUS.fit_resample(X_test, Y_test_class)
 
-else:
-    # one-hot encoding using keras' numpy-related utilities
-    # number of classes inside the dataset
-    n_classes = 10
-    Y_train_class = np_utils.to_categorical(y_train, n_classes)
-    Y_test_class = np_utils.to_categorical(y_test, n_classes)
+print(f' TRAINING SET BALANCED ENTROPHY = {np.sum(y_train_bal) / len(y_train_bal)}')
+print(f' TEST SET BALANCED ENTROPHY = {np.sum(y_test_bal) / len(y_test_bal)}')
 
 '''  the images and labels now are in the correct format '''
 
@@ -327,21 +308,15 @@ Train_label = []
 # only to evaluate the performance of the network
 Test_data = X_test
 Test_label = Y_test_class
-if BINARY:
-    for Agent in range(N_AGENTS):
-        Train_data.append(X_train[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])  # input sample
-        Train_label.append(Y_train_class[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES])  # supervised
-else:
-    for Agent in range(N_AGENTS):
-        Train_data.append(X_train[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])  # input sample
-        Train_label.append(Y_train_class[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])  # supervised
+
+for Agent in range(N_AGENTS):
+    Train_data.append(X_train_bal[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])  # input sample
+    Train_label.append(y_train_bal[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES])  # supervised
 
 ###############################################################################
 '''SET UP THE NEURAL NETWORK'''
-if BINARY:  # Binary classifier
-    d = [784, 512, 512, 250, 10, 1]  # Number of neurons in each layer. bias already considered
-else:  # Multiclass Classifier
-    d = [784, 512, 512, 10]  # Number of neurons in each layer. bias already considered
+# Number of neurons in each layer. bias already considered
+d = [784, 512, 512, 250, 10, 1]
 
 # Number of Layers
 T = len(d)
@@ -381,6 +356,7 @@ for Agent in range(N_AGENTS):
 # Initialization of the Cost Function, its Gradient and the accuracy
 JJ = np.zeros((N_AGENTS, MAX_ITERS))
 dJ_norm = np.zeros((N_AGENTS, MAX_ITERS))
+JJ_Tot = np.zeros(MAX_ITERS)
 
 # ADAM : Initial Momentum and RMSprop parameters
 ss = np.zeros((N_AGENTS, MAX_ITERS))
@@ -404,17 +380,15 @@ for Agent in range(N_AGENTS):
     for Image in range(len(Train_data[Agent])):
         # Extract the sample Imgage from the training set
         data_pnt = Train_data[Agent][Image].reshape(1, -1)  # input sample
-        if BINARY:
-            label_pnt = Train_label[Agent][Image]  # supervised output
-        else:
-            label_pnt = Train_label[Agent][Image].reshape(1, -1)  # supervised output
+
+        label_pnt = Train_label[Agent][Image]  # supervised output
 
         # --> FORWARD PASS
         xx = forward_pass(uu[Agent][0], data_pnt)  # forward simulation
         prediction = xx[-1]
 
         # --> BACKWARD PASS
-        JJ_i_k, llambdaT = Cost_Function(prediction, label_pnt, BINARY)
+        JJ_i_k, llambdaT = Cost_Function(prediction, label_pnt)
         Delta_u = backward_pass(xx, uu[Agent][0], llambdaT)  # the gradient of the loss function
 
         # update the cost vector and the gradient vector
@@ -456,21 +430,20 @@ for kk in range(1, MAX_ITERS - 1):
         for Image in range(len(Train_data[Agent])):
             # Extract the sample Imgage from the training set
             data_pnt = Train_data[Agent][Image].reshape(1, -1)  # input sample
-            if BINARY:
-                label_pnt = Train_label[Agent][Image]  # supervised output
-            else:
-                label_pnt = Train_label[Agent][Image].reshape(1, -1)  # supervised output
+
+            label_pnt = Train_label[Agent][Image]  # supervised output
 
             # --> FORWARD PASS
             xx = forward_pass(uu[Agent][kk], data_pnt)  # forward simulation
             prediction = xx[-1]
 
             # --> BACKWARD PASS
-            JJ_i_k, llambdaT = Cost_Function(prediction, label_pnt, BINARY)
+            JJ_i_k, llambdaT = Cost_Function(prediction, label_pnt)
             Delta_u = backward_pass(xx, uu[Agent][kk], llambdaT)  # the gradient of the loss function
 
             # update the cost vector and the gradient vector
             JJ[Agent, kk] += JJ_i_k
+            JJ[kk] += JJ_i_k
             dJ_norm[Agent, kk] += np.abs(llambdaT)
 
             # Averaging the Local Gradient of the weight matrix
@@ -512,14 +485,16 @@ for kk in range(1, MAX_ITERS - 1):
                         (np.sum(Du[Agent][kk][layer]) - np.sum(Du[Agent][kk - 1][layer])) / Du[Agent][kk][layer].shape[
                             1])
 
-                YY[Agent][kk][layer] = WW[Agent, Agent] * YY[Agent][kk - 1][layer] + (Du[Agent][kk][layer] - Du[Agent][kk - 1][layer])
+                YY[Agent][kk][layer] = WW[Agent, Agent] * YY[Agent][kk - 1][layer] + (
+                        Du[Agent][kk][layer] - Du[Agent][kk - 1][layer])
                 # compute the Average Consensus of the descent
                 for neigh in Neighbours:
                     YY[Agent][kk][layer] += WW[Agent, neigh] * YY[neigh][kk - 1][layer]
 
             # Update the network weigths matrix with the descent
             for layer in range(len(d) - 1):
-                uu[Agent][kk + 1][layer] = WW[Agent, Agent] * uu[Agent][kk][layer] - learning_rate[Agent, kk, layer] * YY[Agent][kk][layer]
+                uu[Agent][kk + 1][layer] = WW[Agent, Agent] * uu[Agent][kk][layer] - learning_rate[Agent, kk, layer] * \
+                                           YY[Agent][kk][layer]
                 # compute the Average Consensus of the Network Weights
                 for neigh in Neighbours:
                     uu[Agent][kk + 1][layer] += WW[Agent, neigh] * uu[neigh][kk][layer]
@@ -532,17 +507,15 @@ for Agent in range(N_AGENTS):
     for Image in range(len(Train_data[Agent])):
         # Extract the sample Imgage from the training set
         data_pnt = Train_data[Agent][Image].reshape(1, -1)  # input sample
-        if BINARY:
-            label_pnt = Train_label[Agent][Image]  # supervised output
-        else:
-            label_pnt = Train_label[Agent][Image].reshape(1, -1)  # supervised output
+
+        label_pnt = Train_label[Agent][Image]  # supervised output
 
         # --> FORWARD PASS
         xx = forward_pass(uu[Agent][MAX_ITERS - 1], data_pnt)  # forward simulation
         prediction = xx[-1]
 
         # --> BACKWARD PASS
-        JJ_i_final, llambdaT = Cost_Function(prediction, label_pnt, BINARY)
+        JJ_i_final, llambdaT = Cost_Function(prediction, label_pnt)
 
         # update the cost vector and the gradient vector
         JJ[Agent, MAX_ITERS - 1] += JJ_i_final
@@ -563,7 +536,7 @@ for Agent in range(N_AGENTS):
     print(f'Agent{Agent}', end='  ')
 print('', end='\n')
 # Compute the Test Accuracy
-Accuracy, predictions = Prediction_Performance(uu, Test_data, Test_label, BINARY)
+Accuracy, predictions = Prediction_Performance(uu, Test_data, Test_label)
 print(end='      ')
 for Agent in range(N_AGENTS):
     print(f'{np.round(Accuracy[Agent] * 100, 2)}%', end='  ')
@@ -586,51 +559,44 @@ if CostErrorEvolution_YES:
 plt.show()
 
 ###############################################################################
-# Figure 2 : Norm Gradient Error Evolution
-NormGradientErrorEvolution_YES = False
-if NormGradientErrorEvolution_YES:
+# Figure 2 : Gradient Innovation Norm
+GInnovationNorm_YES = True
+if GInnovationNorm_YES:
     plt.figure()
     for Agent in range(N_AGENTS):
-        plt.semilogy(np.arange(MAX_ITERS), dJ_norm[Agent, :].flatten(), '--', linewidth=1)
-    plt.semilogy(range(MAX_ITERS), np.sum(dJ_norm, axis=0) / N_AGENTS, 'k-', label=f'Global', linewidth=3)
-    plt.xlabel(r"iterations $t$")
-    plt.title(r"Prediction Error Gradient Norm $= \sqrt{\nabla J^{T} \nabla J}$ ")
+        plt.semilogy(range(MAX_ITERS - 2), InnovationNorm[Agent, :MAX_ITERS - 2], '--', label=f'Agent_{Agent}',
+                     linewidth=1)
+    plt.semilogy(range(MAX_ITERS - 2), np.sum(InnovationNorm[:, :MAX_ITERS - 2], axis=0) / N_AGENTS, 'k-',
+                 label=f'Global',
+                 linewidth=3, )
+    plt.xlabel(r"# Iterations $t$")
+    plt.title(r"Gradient Norm ")
     plt.grid()
-    plt.savefig(lpf + f"/plot/task1/Norm_Grad_Error_{N_AGENTS}_{MAX_ITERS}_{GT_YES}.jpg", transparent=True)
+    plt.savefig(lpf + f"/plot/task1/GInnovationNormPlot_{N_AGENTS}_{MAX_ITERS}_{GT_YES}.jpg", transparent=True)
 plt.show()
-
 ###############################################################################
 # Figure 3 : Gradient Innovation Norm
 GInnovationNorm_YES = True
 if GInnovationNorm_YES:
     plt.figure()
     for Agent in range(N_AGENTS):
-        plt.plot(range(MAX_ITERS-2), InnovationNorm[Agent, :MAX_ITERS-2], '--', label=f'Agent_{Agent}', linewidth=1)
-    plt.plot(range(MAX_ITERS-2), np.sum(InnovationNorm[:, :MAX_ITERS-2], axis=0) / N_AGENTS, 'k-', label=f'Global', linewidth=3, )
+        plt.plot(range(MAX_ITERS - 2), InnovationNorm[Agent, :MAX_ITERS - 2], '--', label=f'Agent_{Agent}', linewidth=1)
+    plt.plot(range(MAX_ITERS - 2), np.sum(InnovationNorm[:, :MAX_ITERS - 2], axis=0) / N_AGENTS, 'k-', label=f'Global',
+             linewidth=3, )
     plt.xlabel(r"# Iterations $t$")
-    plt.title(r"Gradient Norm$ ")
+    plt.title(r"Gradient Norm ")
     plt.grid()
     plt.savefig(lpf + f"/plot/task1/GInnovationNormPlot_{N_AGENTS}_{MAX_ITERS}_{GT_YES}.jpg", transparent=True)
 plt.show()
-
 ###############################################################################
-# Plot consenus weight for each agent
-ConsensusWeightPlot_YES = True
-uu_plot = np.zeros((N_AGENTS, MAX_ITERS, 3))
-if ConsensusWeightPlot_YES:
-    w = 10
-    h = 10
-    fig = plt.figure(figsize=(20, 15))
-    rows = 1
-    columns = T - 1
-    ax = []
-    for layer in range(T - 1):
-        ax.append(fig.add_subplot(rows, columns, layer + 1))
-        ax[-1].set_title(f"weights layer: {layer + 1}")
-        for Agent in range(N_AGENTS):
-            for kk in range(MAX_ITERS):
-                uu_plot[Agent, kk] = uu[Agent][kk][layer][0, :3]
-        ax[-1].plot(np.arange(MAX_ITERS), uu_plot[:-1, :].reshape(MAX_ITERS, -1))
-    fig.savefig(lpf + f"/plot/task1/ConsensusWeightPlot_{N_AGENTS}_{MAX_ITERS}_{GT_YES}.jpg", transparent=True)
+# Figure 4 : Plot of the global neural network
+CostErrorEvolution_YES = True
+if CostErrorEvolution_YES:
+    plt.figure()
+    plt.semilogy(range(MAX_ITERS), JJ_Tot, 'b-', label=f'Global', linewidth=3)
+    plt.xlabel(r"Epochs")
+    plt.title(r"Global Prediction Error $= \sum(\sum((y_{pred} - y_{true})^{T}(y_{pred} - y_{true})))$")
+    plt.grid()
+    plt.savefig(lpf + f"/plot/task1/Global_Cost_Error_{N_AGENTS}_{MAX_ITERS}_{GT_YES}.jpg", transparent=True)
 
 plt.show()
