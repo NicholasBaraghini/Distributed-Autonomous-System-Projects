@@ -392,7 +392,8 @@ for Agent in range(N_AGENTS):
         Delta_u = backward_pass(xx, uu[Agent][0], llambdaT)  # the gradient of the loss function
 
         # update the cost vector and the gradient vector
-        JJ[Agent, 0] += JJ_i_k
+        JJ[Agent, 0] += JJ_i_k[0]
+        JJ_Tot += JJ_i_k[0]
         dJ_norm[Agent, 0] += np.abs(llambdaT)
 
         # Averaging the Local Gradient of the weight matrix
@@ -442,8 +443,8 @@ for kk in range(1, MAX_ITERS - 1):
             Delta_u = backward_pass(xx, uu[Agent][kk], llambdaT)  # the gradient of the loss function
 
             # update the cost vector and the gradient vector
-            JJ[Agent, kk] += JJ_i_k
-            JJ[kk] += JJ_i_k
+            JJ[Agent, kk] += JJ_i_k[0]
+            JJ[kk] += JJ_i_k[0]
             dJ_norm[Agent, kk] += np.abs(llambdaT)
 
             # Averaging the Local Gradient of the weight matrix
