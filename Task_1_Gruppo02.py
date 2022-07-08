@@ -2,24 +2,25 @@ import matplotlib.pyplot as plt
 import numpy as np
 import networkx as nx
 from keras.datasets import mnist
-from keras.utils import np_utils
+from keras.utils import np_utils, losses_utils
+from imblearn.under_sampling import RandomUnderSampler
 
 np.random.seed(seed=7)
 #####################################################################################
 '''SIMULATION PARAMETERS'''
-# False : Multi-Classifier (it classifies the digit) True: Binary-Classifier (it classifies if it is the digit selected
-# or not)
+# False : Multi-Classifier (it classifies the digit) True: Binary-Classifier (it classifies if the digit is even or odd)
 BINARY = True
+TARGET_CLASS = 7
 
-N_AGENTS = 5  # number og agents
-p_ER = 0.85  # probability of generate a connection
+N_AGENTS = 6  # number og agents
+p_ER = 0.6  # probability of generate a connection
 
-N_IMAGES = 80  # Images Per Agent
+N_IMAGES = 70  # Images Per Agent
 
 # Gradient-Tracking Method Parameters
-MAX_ITERS = 14  # epochs
-stepsize = 0.5  # nominal learning rate
-ADAM_Yes = True  # Activate the ADAM algorithm to computre the optimal learning rate or use a standard diminishing learning rate
+MAX_ITERS = 100  # epochs
+stepsize = 0.95  # nominal learning rate
+ADAM_Yes = False  # Activate the ADAM algorithm to computre the optimal learning rate or use a standard diminishing learning rate
 
 GT_YES = True  # Enable Gradient tracking
 
@@ -27,22 +28,15 @@ GT_YES = True  # Enable Gradient tracking
 ''''USEFULL FUNCTIONS'''
 
 
-# Activation Function
-def sigmoid_fn(xi):
-    return 1 / (1 + np.exp(-xi))
-
-
-def ReLu(xi):
-    return xi * (xi > 0)
+def Activation_Function(xi):
+    return 1 / (1 + np.exp(-xi))  # sigmoid
+    # return xi * (xi > 0) + 0.1  # ReLu
 
 
 # Derivative of Activation Function
-def sigmoid_fn_derivative(xi):
-    return sigmoid_fn(xi) * (1 - sigmoid_fn(xi))
-
-
-def ReLu_derivative(xi):
-    return xi > 0
+def Activation_Function_Derivative(xi):
+    return Activation_Function(xi) * (1 - Activation_Function(xi))  # sigmoid
+    # return xi > 0
 
 
 # Inference: x_tp = f(xt,ut)
@@ -58,7 +52,7 @@ def inference_dynamics(xt, ut, t):
     biases = ut[:, 0].reshape(1, -1)
     con_weight = ut[:, 1:].T
     temp = xt @ con_weight + biases
-    xtp = sigmoid_fn(temp)  # ReLu(temp)
+    xtp = Activation_Function(temp)
 
     return xtp
 
@@ -73,8 +67,8 @@ def forward_pass(uu, x0):
                 xx state trajectory: x[1],x[2],..., x[T]
     """
     xx = []
-    for index in range(len(d)):  # create the signal structure
-        xx.append(np.zeros((1, d[index])))
+    for layer in range(len(d)):  # create the signal structure
+        xx.append(np.zeros((1, d[layer])))
 
     # Input layer
     xx[0] = x0
@@ -87,7 +81,7 @@ def forward_pass(uu, x0):
 
 
 # Adjoint Dynamics
-def adjoint_dynamics(ltp, xt, ut, t, BINARY):
+def adjoint_dynamics(ltp, xt, ut, t):
     """
       input:
                 llambda_tp current costate
@@ -111,7 +105,7 @@ def adjoint_dynamics(ltp, xt, ut, t, BINARY):
     temp = xt @ con_weight + biases
 
     # compute the gradient of the activations
-    d_sigma = sigmoid_fn_derivative(temp)  # ReLu_derivative(temp[ell])
+    d_sigma = Activation_Function_Derivative(temp)
 
     # compute df_dx
     AA = (con_weight * d_sigma).T
@@ -130,7 +124,7 @@ def adjoint_dynamics(ltp, xt, ut, t, BINARY):
 
 
 # Backward Propagation
-def backward_pass(xx, uu, llambdaT, BINARY):
+def backward_pass(xx, uu, llambdaT):
     """
       input:
                 xx state trajectory: x[1],x[2],..., x[T]
@@ -142,23 +136,23 @@ def backward_pass(xx, uu, llambdaT, BINARY):
     """
     # Costate structure init
     llambda = []
-    for index in range(len(d)):  # create the signal structure
-        llambda.append(np.zeros((1, d[index])))
+    for layer in range(len(d)):  # create the signal structure
+        llambda.append(np.zeros((1, d[layer])))
     llambda[-1] = llambdaT
     # gradient structure of connection weights init
     Delta_u = []
-    for index in range(len(d) - 1):  # create the signal structure
-        Delta_u.append(np.zeros((1, d[index])))
+    for layer in range(len(d) - 1):  # create the signal structure
+        Delta_u.append(np.zeros((1, d[layer])))
 
     # run the adjoint dynamics to define the costate structure and the Delta_u structure
     for t in reversed(range(T - 1)):  # T-1,T-2,...,1,0
-        llambda[t], Delta_u[t] = adjoint_dynamics(llambda[t + 1], xx[t], uu[t], t, BINARY)
+        llambda[t], Delta_u[t] = adjoint_dynamics(llambda[t + 1], xx[t], uu[t], t)
 
     return Delta_u
 
 
 # Cost Function
-def Cost_Function(Prediction, Label, BINAY):
+def Cost_Function(Prediction, Label, BINARY):
     """
           input:
                     Prediction : Output prediction of the class from the Neural Network
@@ -168,43 +162,52 @@ def Cost_Function(Prediction, Label, BINAY):
                     dJ gradient of J
     """
     if BINARY:
-        J = (Prediction - Label) * (Prediction - Label)
-        dJ = 2 * (Prediction - Label)
+        # Binary Cross Entropy For the Binary Classification
+        Y = (Label + 1) / 2
+        J = -(Y * np.log(prediction) + (1 - Y) * np.log(1 - prediction))  # (Prediction - Label) * (Prediction - Label)
+        dJ = (Prediction - Y) / (Prediction * (1 - prediction) + 0.00001)
     else:
-        J = (Prediction - Label) @ (Prediction - Label).T
-        dJ = 2 * (Prediction - Label)
+        J = 10 * (Label - Prediction) @ (Label - Prediction).T
+        dJ = 2 * 10 * (Label - Prediction)
 
     return J, dJ
 
 
 def Prediction_Performance(uu, Test_data, Test_label, BINARY):
+    N_TEST_SAMPLES = len(Test_data)
     accuracy = np.zeros(N_AGENTS)
-
+    predictions = np.zeros((N_AGENTS, N_TEST_SAMPLES))
     for Agent in range(N_AGENTS):
         # Counter of correctly classified samples
-        success = 0
         'Cycle for each sample of the dataset per each agent'
-        for Image in range(len(Test_data[Agent])):
+        for Image in range(N_TEST_SAMPLES):
             # Extract the sample Imgage from the test set
-            data_pnt = Test_data[Agent][Image].reshape(1, -1)  # input sample
+            data_pnt = Test_data[Image].reshape(1, -1)  # input sample
             if BINARY:
-                label_pnt = Test_label[Agent][Image]  # supervised output
+                label_pnt = Test_label[Image]  # supervised output
             else:
-                label_pnt = Test_label[Agent][Image].reshape(1, -1)  # supervised output
+                label_pnt = np.argmax(Test_label[Image].reshape(1, -1))  # supervised output
 
             # --> FORWARD PASS
-            xx = forward_pass(uu[Agent][kk], data_pnt)  # forward simulation
-            prediction = xx[-1]
+            xx = forward_pass(uu[Agent][MAX_ITERS - 1], data_pnt)  # forward simulation
+            if BINARY:
+                if xx[-1] <= 0:
+                    prediction = -1
+                else:
+                    prediction = 1
+            else:
+                pred = np.zeros(n_classes)
+                pred[np.argmax(xx[-1])] = 1
+                prediction = np.argmax(pred)
+                label_pnt = np.argmax(label_pnt)
 
-            Y_true = np.argmax(label_pnt)
-            Y_pred = np.argmax(prediction)
-            if Y_true == Y_pred:
-                success += 1
+            if prediction == label_pnt:
+                # Accuracy on the test Set
+                accuracy[Agent] += 1
 
-        # Accuracy on the test Set
-        accuracy[Agent] = success / len(Test_data[Agent])
+            predictions[Agent, Image] = prediction
 
-    return accuracy
+    return accuracy / N_TEST_SAMPLES, predictions
 
 
 # Dynamica step size to increase the performance of the model
@@ -219,12 +222,12 @@ def ADAM(g_t, s_t, Grad_cost, stepsize, Beta_1=0.9, Beta_2=0.999):
     # computing the new learning rate
     learning_rate = (stepsize / (np.sqrt(s_debiased) + 0.001)) * g_debiased
 
+    # print(f'{learning_rate} learning_rate')
+
     return learning_rate, g_debiased, s_debiased
 
 
 #####################################################################################
-'''SELECTED TYPE OF CLASSIFIER'''
-
 ''' IMPORT AND PRE-PROCESSING OF DATASET'''
 # LOADING the Mnist Dataset
 (X_train, y_train), (X_test, y_test) = mnist.load_data()
@@ -244,20 +247,24 @@ X_test /= 255
 # LABELS MAPPING according to the classification problem we are solving (if binary or multiclass
 # classification)
 if BINARY:
-    # digit to be classified
-    CLASS_IDENTIFIED = 4
-    # build the label such that it will be 1 if the image contains the digit chones by CLASS_IDENTIFIED
-    Y_train_class = [1 if y == CLASS_IDENTIFIED else -1 for y in y_train]
-    Y_test_class = [1 if y == CLASS_IDENTIFIED else -1 for y in y_test]
+    print('#########################    DATASET BALANCE CHECK    ###########################\n')
+    # build the label such that it will be 1 if the image contains the TARGET_CLASS digit, -1 otherwise
+    Y_train_class = [-1 if y == TARGET_CLASS else 1 for y in y_train]
+    Y_test_class = [-1 if y == TARGET_CLASS else 1 for y in y_test]
+    # Balancing the training set
+    RandomUS = RandomUnderSampler()
+    X_train_bal, y_train_bal = RandomUS.fit_resample(X_train, Y_train_class)
+    X_test_bal, y_test_bal = RandomUS.fit_resample(X_test, Y_test_class)
+
+    print(f' TRAINING SET BALANCED ENTROPHY = {np.sum(y_train_bal) / len(y_train_bal)}')
+    print(f' TEST SET BALANCED ENTROPHY = {np.sum(y_test_bal) / len(y_test_bal)}')
 
 else:
     # one-hot encoding using keras' numpy-related utilities
     # number of classes inside the dataset
     n_classes = 10
     Y_train_class = np_utils.to_categorical(y_train, n_classes)
-    # Y_train_class[Y_train_class == 0] = -1  # substitute 0 with -1
     Y_test_class = np_utils.to_categorical(y_test, n_classes)
-    # Y_test_class[Y_test_class == 0] = -1  # substitute 0 with -1
 
 '''  the images and labels now are in the correct format '''
 
@@ -285,7 +292,7 @@ if False:
     plt.show()
 # _____________________________________________________________________________
 '''COMPUTE MIXING MATRICES'''
-
+# Adding the self-loops in the Adj. Matric to obtain Periodicity of the Communication Net
 WW = 1.5 * I_NN + 0.5 * Adj
 
 ONES = np.ones((N_AGENTS, N_AGENTS))
@@ -306,59 +313,52 @@ print('#######################    WEIGHTED ADJIACENCY MATRIX    ################
 print(f"\t\t\r{WW}\n")
 
 with np.printoptions(precision=4, suppress=True):
-    print('Check Stochasticity\n row:    {} \n column: {}\n'.format(
+    print('Check Doubly Stochasticity\n row:    {} \n column: {}\n'.format(
         np.sum(WW, axis=1),
         np.sum(WW, axis=0)
     ))
+'''' NB: If the Grap is Periodic, Strongly Connected and Doubly Stochastic then Average Consensus is guaranteed!!'''
 
-# _____________________________________________________________________________
+###############################################################################
 ''' SPLITTING THE DATASET FOR EACH AGENT '''
-
 Train_data = []
 Train_label = []
-Test_data = []
-Test_label = []
+# Test data do not need to be separated among thw agents as the final model reach consensus and the test data are used
+# only to evaluate the performance of the network
+Test_data = X_test
+Test_label = Y_test_class
 if BINARY:
     for Agent in range(N_AGENTS):
         Train_data.append(X_train[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])  # input sample
         Train_label.append(Y_train_class[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES])  # supervised
-
-        Test_data.append(X_test[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])
-        Test_label.append(Y_test_class[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES])
-        # output
 else:
     for Agent in range(N_AGENTS):
         Train_data.append(X_train[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])  # input sample
         Train_label.append(Y_train_class[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])  # supervised
 
-        Test_data.append(X_test[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])
-        Test_label.append(Y_test_class[(Agent * N_IMAGES):(Agent + 1) * N_IMAGES, :])
-        # output
-
 ###############################################################################
 '''SET UP THE NEURAL NETWORK'''
-
 if BINARY:  # Binary classifier
-    d = [784, 512, 512, 1]  # Number of neurons in each layer. bias already considered
+    d = [784, 512, 512, 250, 10, 1]  # Number of neurons in each layer. bias already considered
 else:  # Multiclass Classifier
     d = [784, 512, 512, 10]  # Number of neurons in each layer. bias already considered
 
 # Number of Layers
 T = len(d)
+
 ###############################################################################
 ''' START THE ALGORITHM'''
-
 # Initial Weights / Initial Input Trajectory
 uu = []
 for Agent in range(N_AGENTS):
     uu.append([])
     for kk in range(MAX_ITERS):
         uu[Agent].append([])
-        for index in range(len(d) - 1):
+        for layer in range(len(d) - 1):
             if kk == 0:
-                uu[Agent][kk].append(np.random.randn(d[index + 1], d[index] + 1))  # bias considered
+                uu[Agent][kk].append(np.random.randn(d[layer + 1], d[layer] + 1) * 10)  # bias considered
             else:
-                uu[Agent][kk].append(np.zeros((d[index + 1], d[index] + 1)))  # bias considered
+                uu[Agent][kk].append(np.zeros((d[layer + 1], d[layer] + 1)))  # bias considered
 
 # Initial Gradient direction
 YY = []
@@ -366,8 +366,8 @@ for Agent in range(N_AGENTS):
     YY.append([])
     for kk in range(MAX_ITERS):
         YY[Agent].append([])
-        for index in range(len(d) - 1):
-            YY[Agent][kk].append(np.zeros((d[index + 1], d[index] + 1)))  # bias considered
+        for layer in range(len(d) - 1):
+            YY[Agent][kk].append(np.zeros((d[layer + 1], d[layer] + 1)))  # bias considered
 
 # Initial Gradient of U
 Du = []
@@ -375,8 +375,8 @@ for Agent in range(N_AGENTS):
     Du.append([])
     for kk in range(MAX_ITERS):
         Du[Agent].append([])
-        for index in range(len(d) - 1):
-            Du[Agent][kk].append(np.zeros((d[index + 1], d[index] + 1)))  # bias considered
+        for layer in range(len(d) - 1):
+            Du[Agent][kk].append(np.zeros((d[layer + 1], d[layer] + 1)))  # bias considered
 
 # Initialization of the Cost Function, its Gradient and the accuracy
 JJ = np.zeros((N_AGENTS, MAX_ITERS))
@@ -386,6 +386,7 @@ dJ_norm = np.zeros((N_AGENTS, MAX_ITERS))
 ss = np.zeros((N_AGENTS, MAX_ITERS))
 gg = np.zeros((N_AGENTS, MAX_ITERS))
 learning_rate = np.zeros((N_AGENTS, MAX_ITERS, T))
+InnovationNorm = np.zeros((N_AGENTS, MAX_ITERS))
 
 # Prep. of the printing
 print('#########################    TRAINING SET COST ERROR    #########################\n')
@@ -410,41 +411,40 @@ for Agent in range(N_AGENTS):
 
         # --> FORWARD PASS
         xx = forward_pass(uu[Agent][0], data_pnt)  # forward simulation
+        prediction = xx[-1]
 
         # --> BACKWARD PASS
-        prediction = xx[-1]
         JJ_i_k, llambdaT = Cost_Function(prediction, label_pnt, BINARY)
-        Delta_u = backward_pass(xx, uu[Agent][0], llambdaT, BINARY)  # the gradient of the loss function
+        Delta_u = backward_pass(xx, uu[Agent][0], llambdaT)  # the gradient of the loss function
 
         # update the cost vector and the gradient vector
         JJ[Agent, 0] += JJ_i_k
-        if BINARY:
-            dJ_norm[Agent, 0] += np.sqrt(llambdaT * llambdaT)
-        else:
-            dJ_norm[Agent, 0] += np.sqrt(llambdaT @ llambdaT.T)
+        dJ_norm[Agent, 0] += np.abs(llambdaT)
 
         # Averaging the Local Gradient of the weight matrix
-        for index in range(len(d) - 1):
-            Du[Agent][0][index] += Delta_u[index] / len(Train_data[Agent])
-            YY[Agent][0][index] += Delta_u[index] / len(Train_data[Agent])
+        for layer in range(len(d) - 1):
+            Du[Agent][0][layer] += Delta_u[layer] / len(Train_data[Agent])
+            YY[Agent][0][layer] += Delta_u[layer] / len(Train_data[Agent])
+            if layer == 4:
+                InnovationNorm[Agent, 0] = np.abs((np.sum(Du[Agent][0][layer])))
 
     # Learning rate update
     if ADAM_Yes:
-        for index in range(len(d) - 1):
-            lr, gg_tp, ss_tp = ADAM(gg[Agent, 0], ss[Agent, 0], Du[Agent][0][index], stepsize)
-            learning_rate[Agent, 0, index] = np.sum(lr) / (len(lr.flatten().tolist()))
+        for layer in range(len(d) - 1):
+            lr, gg_tp, ss_tp = ADAM(gg[Agent, 0], ss[Agent, 0], Du[Agent][0][layer], stepsize)
+            learning_rate[Agent, 0, layer] = np.sum(lr) / (len(lr.flatten().tolist()))
             gg[Agent, 1] = np.sum(gg_tp) / (len(gg_tp.flatten().tolist()))
             ss[Agent, 1] = np.sum(ss_tp) / (len(ss_tp.flatten().tolist()))
     else:
-        for index in range(len(d) - 1):
-            learning_rate[Agent, 0, index] = stepsize ** 0
+        for layer in range(len(d) - 1):
+            learning_rate[Agent, 0, layer] = stepsize ** 0
 
-    for index in range(len(d) - 1):
-        uu[Agent][1][index] = WW[Agent, Agent] * uu[Agent][0][index] - learning_rate[Agent, 0, index] * Du[Agent][0][
-            index]
+    for layer in range(len(d) - 1):
+        uu[Agent][1][layer] = WW[Agent, Agent] * uu[Agent][0][layer] - learning_rate[Agent, 0, layer] * Du[Agent][0][
+            layer]
         # compute the Average Consensus of the Network Weights
         for neigh in Neighbours:
-            uu[Agent][1][index] += WW[Agent, neigh] * uu[neigh][0][index]
+            uu[Agent][1][layer] += WW[Agent, neigh] * uu[neigh][0][layer]
 
 # __________________________________CYCLE FOR EACH EPOCH____________________________________
 'Cycle for each Epoch'
@@ -463,28 +463,33 @@ for kk in range(1, MAX_ITERS - 1):
 
             # --> FORWARD PASS
             xx = forward_pass(uu[Agent][kk], data_pnt)  # forward simulation
+            prediction = xx[-1]
 
             # --> BACKWARD PASS
-            prediction = xx[-1]
             JJ_i_k, llambdaT = Cost_Function(prediction, label_pnt, BINARY)
-            Delta_u = backward_pass(xx, uu[Agent][kk], llambdaT, BINARY)  # the gradient of the loss function
+            Delta_u = backward_pass(xx, uu[Agent][kk], llambdaT)  # the gradient of the loss function
 
-            # update the cost vector
+            # update the cost vector and the gradient vector
             JJ[Agent, kk] += JJ_i_k
+            dJ_norm[Agent, kk] += np.abs(llambdaT)
+
             # Averaging the Local Gradient of the weight matrix
-            for index in range(len(d) - 1):
-                Du[Agent][kk][index] += Delta_u[index] / len(Train_data[Agent])
+            for layer in range(len(d) - 1):
+                Du[Agent][kk][layer] += Delta_u[layer] / len(Train_data[Agent])
 
         # Learning rate update
         if ADAM_Yes:
-            for index in range(len(d) - 1):
-                lr, gg_tp, ss_tp = ADAM(gg[Agent, kk], ss[Agent, kk], Du[Agent][kk][index], stepsize)
-                learning_rate[Agent, kk, index] = np.sum(lr) / (len(lr.flatten().tolist()))
+            for layer in range(len(d) - 1):
+                lr, gg_tp, ss_tp = ADAM(gg[Agent, kk], ss[Agent, kk], Du[Agent][kk][layer], stepsize)
+                learning_rate[Agent, kk, layer] = np.sum(lr) / (len(lr.flatten().tolist()))
                 gg[Agent, kk + 1] = np.sum(gg_tp) / (len(gg_tp.flatten().tolist()))
                 ss[Agent, kk + 1] = np.sum(ss_tp) / (len(ss_tp.flatten().tolist()))
         else:
-            for index in range(len(d) - 1):
-                learning_rate[Agent, kk, index] = stepsize ** kk
+            for layer in range(len(d) - 1):
+                if kk % 3:
+                    learning_rate[Agent, kk, layer] = stepsize ** kk
+                else:
+                    learning_rate[Agent, kk, layer] = learning_rate[Agent, kk - 1, layer]
 
     # Print The Actual Cost
     if kk % 1 == 0:
@@ -500,20 +505,24 @@ for kk in range(1, MAX_ITERS - 1):
             Neighbours = np.nonzero(Adj[Agent])[0]
 
             # Compute the descent for the iteration k
-            for index in range(len(d) - 1):
-                YY[Agent][kk][index] = WW[Agent, Agent] * YY[Agent][kk - 1][index] + (
-                        Du[Agent][kk][index] - Du[Agent][kk - 1][index])
+            for layer in range(len(d) - 1):
+
+                if layer == 4:
+                    InnovationNorm[Agent, kk] = np.abs(
+                        (np.sum(Du[Agent][kk][layer]) - np.sum(Du[Agent][kk - 1][layer])) / Du[Agent][kk][layer].shape[
+                            1])
+
+                YY[Agent][kk][layer] = WW[Agent, Agent] * YY[Agent][kk - 1][layer] + (Du[Agent][kk][layer] - Du[Agent][kk - 1][layer])
                 # compute the Average Consensus of the descent
                 for neigh in Neighbours:
-                    YY[Agent][kk][index] += WW[Agent, neigh] * YY[neigh][kk - 1][index]
+                    YY[Agent][kk][layer] += WW[Agent, neigh] * YY[neigh][kk - 1][layer]
 
             # Update the network weigths matrix with the descent
-            for index in range(len(d) - 1):
-                uu[Agent][kk + 1][index] = WW[Agent, Agent] * uu[Agent][kk][index] - learning_rate[Agent, kk, index] * \
-                                           YY[Agent][kk][index]
+            for layer in range(len(d) - 1):
+                uu[Agent][kk + 1][layer] = WW[Agent, Agent] * uu[Agent][kk][layer] - learning_rate[Agent, kk, layer] * YY[Agent][kk][layer]
                 # compute the Average Consensus of the Network Weights
                 for neigh in Neighbours:
-                    uu[Agent][kk + 1][index] += WW[Agent, neigh] * uu[neigh][kk][index]
+                    uu[Agent][kk + 1][layer] += WW[Agent, neigh] * uu[neigh][kk][layer]
 
 # Terminal iteration
 'Cycle for each Agent - Computation of local model'
@@ -530,26 +539,34 @@ for Agent in range(N_AGENTS):
 
         # --> FORWARD PASS
         xx = forward_pass(uu[Agent][MAX_ITERS - 1], data_pnt)  # forward simulation
+        prediction = xx[-1]
 
         # --> BACKWARD PASS
-        prediction = xx[-1]
         JJ_i_final, llambdaT = Cost_Function(prediction, label_pnt, BINARY)
 
         # update the cost vector and the gradient vector
         JJ[Agent, MAX_ITERS - 1] += JJ_i_final
+        dJ_norm[Agent, MAX_ITERS - 1] += np.abs(llambdaT)
 
-    dJ_norm[Agent, :] = np.abs(np.gradient(JJ[Agent]))
+        # Averaging the Local Gradient of the weight matrix
+        for layer in range(len(d) - 1):
+            Du[Agent][MAX_ITERS - 1][layer] += Delta_u[layer] / len(Train_data[Agent])
+            if layer == 4:
+                InnovationNorm[Agent, MAX_ITERS - 1] = np.abs(
+                    (np.sum(Du[Agent][MAX_ITERS - 1][layer]) - np.sum(Du[Agent][kk - 1][layer])) /
+                    Du[Agent][kk][layer].shape[1])
 
 # Print the test accuracy
-print('############################\tTEST SET ACCURACY\t############################\n')
-print(f'iter', end=' ')
+print('\n############################\tTEST SET ACCURACY\t############################\n')
+print(end='      ')
 for Agent in range(N_AGENTS):
-    print(f'Agent{Agent}', end=' ')
+    print(f'Agent{Agent}', end='  ')
 print('', end='\n')
 # Compute the Test Accuracy
-Accuracy = Prediction_Performance(uu, Test_data, Test_label, BINARY)
+Accuracy, predictions = Prediction_Performance(uu, Test_data, Test_label, BINARY)
+print(end='      ')
 for Agent in range(N_AGENTS):
-    print(f'{np.round(Accuracy[Agent], 2)}%', end=' ')
+    print(f'{np.round(Accuracy[Agent] * 100, 2)}%', end='  ')
 print('', end='\n')
 
 ###############################################################################
@@ -559,9 +576,9 @@ CostErrorEvolution_YES = True
 if CostErrorEvolution_YES:
     plt.figure()
     for Agent in range(N_AGENTS):
-        plt.semilogy(np.arange(MAX_ITERS), JJ[Agent, :].flatten(), '--', linewidth=3)
+        plt.semilogy(np.arange(MAX_ITERS), JJ[Agent, :].flatten(), '--', linewidth=1)
+    plt.semilogy(range(MAX_ITERS), np.sum(JJ, axis=0) / N_AGENTS, 'k-', label=f'Global', linewidth=3)
     plt.xlabel(r"Epochs")
-    # plt.ylabel(r"$J$")
     plt.title(r"Prediction Error $= \sum((y_{pred} - y_{true})^{T}(y_{pred} - y_{true}))$")
     plt.grid()
     plt.savefig(lpf + f"/plot/task1/Cost_Error_{N_AGENTS}_{MAX_ITERS}_{GT_YES}.jpg", transparent=True)
@@ -570,17 +587,50 @@ plt.show()
 
 ###############################################################################
 # Figure 2 : Norm Gradient Error Evolution
-NormGradientErrorEvolution_YES = True
+NormGradientErrorEvolution_YES = False
 if NormGradientErrorEvolution_YES:
     plt.figure()
     for Agent in range(N_AGENTS):
-        plt.semilogy(np.arange(MAX_ITERS), dJ_norm[Agent, :].flatten(), '--', linewidth=3)
+        plt.semilogy(np.arange(MAX_ITERS), dJ_norm[Agent, :].flatten(), '--', linewidth=1)
+    plt.semilogy(range(MAX_ITERS), np.sum(dJ_norm, axis=0) / N_AGENTS, 'k-', label=f'Global', linewidth=3)
     plt.xlabel(r"iterations $t$")
-    # plt.ylabel(r"$JJ$")
     plt.title(r"Prediction Error Gradient Norm $= \sqrt{\nabla J^{T} \nabla J}$ ")
     plt.grid()
     plt.savefig(lpf + f"/plot/task1/Norm_Grad_Error_{N_AGENTS}_{MAX_ITERS}_{GT_YES}.jpg", transparent=True)
 plt.show()
 
 ###############################################################################
+# Figure 3 : Gradient Innovation Norm
+GInnovationNorm_YES = True
+if GInnovationNorm_YES:
+    plt.figure()
+    for Agent in range(N_AGENTS):
+        plt.plot(range(MAX_ITERS-2), InnovationNorm[Agent, :MAX_ITERS-2], '--', label=f'Agent_{Agent}', linewidth=1)
+    plt.plot(range(MAX_ITERS-2), np.sum(InnovationNorm[:, :MAX_ITERS-2], axis=0) / N_AGENTS, 'k-', label=f'Global', linewidth=3, )
+    plt.xlabel(r"# Iterations $t$")
+    plt.title(r"Gradient Norm$ ")
+    plt.grid()
+    plt.savefig(lpf + f"/plot/task1/GInnovationNormPlot_{N_AGENTS}_{MAX_ITERS}_{GT_YES}.jpg", transparent=True)
+plt.show()
 
+###############################################################################
+# Plot consenus weight for each agent
+ConsensusWeightPlot_YES = True
+uu_plot = np.zeros((N_AGENTS, MAX_ITERS, 3))
+if ConsensusWeightPlot_YES:
+    w = 10
+    h = 10
+    fig = plt.figure(figsize=(20, 15))
+    rows = 1
+    columns = T - 1
+    ax = []
+    for layer in range(T - 1):
+        ax.append(fig.add_subplot(rows, columns, layer + 1))
+        ax[-1].set_title(f"weights layer: {layer + 1}")
+        for Agent in range(N_AGENTS):
+            for kk in range(MAX_ITERS):
+                uu_plot[Agent, kk] = uu[Agent][kk][layer][0, :3]
+        ax[-1].plot(np.arange(MAX_ITERS), uu_plot[:-1, :].reshape(MAX_ITERS, -1))
+    fig.savefig(lpf + f"/plot/task1/ConsensusWeightPlot_{N_AGENTS}_{MAX_ITERS}_{GT_YES}.jpg", transparent=True)
+
+plt.show()
