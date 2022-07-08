@@ -393,7 +393,7 @@ for Agent in range(N_AGENTS):
 
         # update the cost vector and the gradient vector
         JJ[Agent, 0] += JJ_i_k[0]
-        JJ_Tot += JJ_i_k[0]
+        JJ_Tot[0] += JJ_i_k[0]
         dJ_norm[Agent, 0] += np.abs(llambdaT)
 
         # Averaging the Local Gradient of the weight matrix
@@ -444,7 +444,7 @@ for kk in range(1, MAX_ITERS - 1):
 
             # update the cost vector and the gradient vector
             JJ[Agent, kk] += JJ_i_k[0]
-            JJ[kk] += JJ_i_k[0]
+            JJ_Tot[kk] += JJ_i_k[0]
             dJ_norm[Agent, kk] += np.abs(llambdaT)
 
             # Averaging the Local Gradient of the weight matrix
@@ -520,6 +520,7 @@ for Agent in range(N_AGENTS):
 
         # update the cost vector and the gradient vector
         JJ[Agent, MAX_ITERS - 1] += JJ_i_final
+        JJ_Tot[MAX_ITERS-1] += JJ_i_final[0]
         dJ_norm[Agent, MAX_ITERS - 1] += np.abs(llambdaT)
 
         # Averaging the Local Gradient of the weight matrix
